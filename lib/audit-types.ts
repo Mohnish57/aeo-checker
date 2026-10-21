@@ -56,21 +56,18 @@ export type AuditResult = {
   };
   categories: AuditCategory[];
   diagnostics: {
-    contextDevMarkdown: "ready" | "empty" | "failed";
-    contextDevHtml: "ready" | "empty" | "failed";
+    httpStatus: number;
+    redirects: number;
+    markdownExtract: "ready" | "empty";
+    robotsTxt: "found" | "missing";
+    llmsTxt: "found" | "missing";
+    sitemap: "found" | "missing";
+    pageSpeed: "ready" | "unavailable";
+    pageSpeedReportUrl: string;
     jsonLdParseFailures: number;
   };
 };
 
 export type AuditApiResponse =
-  | {
-      status: "ready";
-      audit: AuditResult;
-      cached: boolean;
-      updatedAt?: number;
-    }
-  | {
-      status: "error" | "missing-env";
-      message: string;
-      missing?: string[];
-    };
+  | { status: "ready"; audit: AuditResult }
+  | { status: "error"; message: string };

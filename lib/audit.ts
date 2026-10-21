@@ -2,15 +2,15 @@
  * Audit orchestrator.
  *
  * Responsibilities:
- *   1. Pull page HTML and Markdown from context.dev.
+ *   1. Fetch the page, its site files (robots.txt, llms.txt, sitemap) and
+ *      PageSpeed Insights data (`fetchPageSources`).
  *   2. Parse those into a `RuleContext` (everything rules need to inspect).
  *   3. Run every rule from `lib/rules.ts` and assemble the AuditResult.
  *
- * We NEVER make direct HTTP calls to the audited site. All web data flows
- * through context.dev. To change *what* is measured, edit `lib/rules.ts`.
+ * Only `fetchPageSources` touches the network; `auditFromSources` is pure so
+ * it can be tested with fixtures. To change *what* is measured, edit
+ * `lib/rules.ts`.
  */
-import { ContextDev } from "context.dev";
-
 import { buildAgentFixPrompts } from "@/lib/agent-fix-prompt";
 import type {
   AuditBand,
@@ -19,6 +19,13 @@ import type {
   AuditResult,
   AuditStatus,
 } from "@/lib/audit-types";
+import { htmlToMainMarkdown } from "@/lib/extract";
+import { FetchError, safeFetch, type FetchResult } from "@/lib/net/safe-fetch";
+import {
+  fetchPageSpeed,
+  pageSpeedReportUrl,
+  type PageSpeedResult,
+} from "@/lib/pagespeed";
 import {
   CATEGORIES,
   RULES,
@@ -28,9 +35,12 @@ import {
   type DateSignals,
   type Heading,
   type JsonObject,
+  type Rule,
   type RuleContext,
+  type RuleEvaluation,
   type SchemaSummary,
 } from "@/lib/rules";
+import { fetchSiteFiles, type SiteFiles } from "@/lib/site-files";
 import { displayHost } from "@/lib/url";
 
 const STATUS_VALUE: Record<AuditStatus, number> = {
@@ -40,11 +50,59 @@ const STATUS_VALUE: Record<AuditStatus, number> = {
   na: 0, // N/A rules do not contribute to the score.
 };
 
+export type PageSources = {
+  requestedUrl: string;
+  page: FetchResult;
+  site: SiteFiles;
+  pageSpeed: PageSpeedResult | null;
+};
+
+export type RunAuditOptions = { pageSpeedApiKey?: string };
+
 export async function runAudit(
   normalizedUrl: string,
-  contextDevApiKey: string,
+  options: RunAuditOptions = {},
 ): Promise<AuditResult> {
-  const ctx = await buildContext(normalizedUrl, contextDevApiKey);
+  return auditFromSources(await fetchPageSources(normalizedUrl, options));
+}
+
+export async function fetchPageSources(
+  normalizedUrl: string,
+  options: RunAuditOptions = {},
+): Promise<PageSources> {
+  const page = await safeFetch(normalizedUrl);
+  assertAuditablePage(page);
+  // PageSpeed takes 15-40s; it starts only once the page is known to be
+  // auditable and runs alongside the site-file fetches. It never rejects.
+  const [site, pageSpeed] = await Promise.all([
+    fetchSiteFiles(new URL(page.finalUrl)),
+    fetchPageSpeed(page.finalUrl, options.pageSpeedApiKey),
+  ]);
+  return { requestedUrl: normalizedUrl, page, site, pageSpeed };
+}
+
+const BOT_WALL_STATUSES = new Set([401, 403, 429, 503]);
+
+export function assertAuditablePage(page: FetchResult): void {
+  if (BOT_WALL_STATUSES.has(page.status)) {
+    throw new FetchError(
+      "blocked",
+      `The site blocked our checker (HTTP ${page.status}). Bot protection that blocks us usually blocks AI crawlers too, so check your firewall or bot-management rules.`,
+    );
+  }
+  if (page.status >= 400) {
+    throw new FetchError("http-error", `The page returned HTTP ${page.status}.`);
+  }
+  const isHtml =
+    /html/i.test(page.contentType) ||
+    /^\s*(<!doctype html|<html)/i.test(page.body);
+  if (!isHtml) {
+    throw new FetchError("not-html", "That URL did not return an HTML page.");
+  }
+}
+
+export function auditFromSources(sources: PageSources): AuditResult {
+  const ctx = buildContext(sources);
   const categories = scoreCategories(ctx);
 
   const score = round1(categories.reduce((sum, c) => sum + c.score, 0));
@@ -56,7 +114,7 @@ export async function runAudit(
     .map((item) => `${item.id}: ${item.recommendation}`);
 
   const audit: Omit<AuditResult, "agentPrompts"> = {
-    url: normalizedUrl,
+    url: sources.requestedUrl,
     host: ctx.host,
     title: ctx.title,
     description: ctx.description,
@@ -75,18 +133,14 @@ export async function runAudit(
     },
     categories,
     diagnostics: {
-      contextDevMarkdown:
-        ctx.markdownStatus === "rejected"
-          ? "failed"
-          : ctx.markdown
-            ? "ready"
-            : "empty",
-      contextDevHtml:
-        ctx.htmlStatus === "rejected"
-          ? "failed"
-          : ctx.html
-            ? "ready"
-            : "empty",
+      httpStatus: ctx.httpStatus,
+      redirects: ctx.redirects,
+      markdownExtract: ctx.markdown ? "ready" : "empty",
+      robotsTxt: ctx.robotsTxt ? "found" : "missing",
+      llmsTxt: ctx.llmsTxt?.status === 200 ? "found" : "missing",
+      sitemap: ctx.sitemap.found ? "found" : "missing",
+      pageSpeed: ctx.pageSpeed ? "ready" : "unavailable",
+      pageSpeedReportUrl: pageSpeedReportUrl(sources.requestedUrl),
       jsonLdParseFailures: ctx.jsonLdParseFailures,
     },
   };
@@ -95,36 +149,22 @@ export async function runAudit(
 }
 
 // ---------------------------------------------------------------------------
-// Context building: fetch + parse everything that rules might want to read.
+// Context building: parse everything that rules might want to read.
 // ---------------------------------------------------------------------------
 
-type InternalContext = RuleContext & {
-  markdownStatus: "fulfilled" | "rejected";
-  htmlStatus: "fulfilled" | "rejected";
-};
+function buildContext(sources: PageSources): RuleContext {
+  const { page, site, pageSpeed } = sources;
+  const url = new URL(page.finalUrl);
+  const pageUrl = url.toString();
+  const host = displayHost(pageUrl);
 
-async function buildContext(
-  normalizedUrl: string,
-  contextDevApiKey: string,
-): Promise<InternalContext> {
-  const client = new ContextDev({ apiKey: contextDevApiKey });
-  const url = new URL(normalizedUrl);
-  const host = displayHost(normalizedUrl);
-
-  const [markdownSettled, htmlSettled] = await Promise.allSettled([
-    scrapeMarkdown(client, normalizedUrl),
-    scrapeHtml(client, normalizedUrl),
-  ]);
-
-  const markdown =
-    markdownSettled.status === "fulfilled" ? markdownSettled.value : "";
-  const html = htmlSettled.status === "fulfilled" ? htmlSettled.value : "";
-
+  const html = page.body;
+  const markdown = htmlToMainMarkdown(html);
   const htmlText = htmlToText(html);
   const analysisText = normalizeWhitespace(markdown || htmlText);
   const title = extractTitle(html) ?? firstMarkdownHeading(markdown);
   const description = extractMetaContent(html, "description");
-  const links = extractLinks(html, markdown, normalizedUrl);
+  const links = extractLinks(html, markdown, pageUrl);
   const externalLinks = links.filter(
     (link) => new URL(link).origin !== url.origin,
   );
@@ -186,8 +226,21 @@ async function buildContext(
     dateSignals,
     faqStatus,
     hasByline,
-    markdownStatus: markdownSettled.status,
-    htmlStatus: htmlSettled.status,
+    httpStatus: page.status,
+    redirects: page.redirects,
+    robotsTxt: site.robotsTxt,
+    llmsTxt: site.llmsTxt,
+    sitemap: site.sitemap,
+    pageSpeed,
+    htmlLang: extractHtmlLang(html),
+    viewport: extractMetaContent(html, "viewport"),
+    openGraph: {
+      title: !!extractMetaContent(html, "og:title"),
+      description: !!extractMetaContent(html, "og:description"),
+      image: !!extractMetaContent(html, "og:image"),
+    },
+    twitterCard: !!extractMetaContent(html, "twitter:card"),
+    images: countImages(html),
   };
 }
 
@@ -195,14 +248,39 @@ async function buildContext(
 // Scoring: iterate RULES, group by category, apply multipliers.
 // ---------------------------------------------------------------------------
 
+type Evaluated = { rule: Rule; result: RuleEvaluation };
+
 function scoreCategories(ctx: RuleContext): AuditCategory[] {
-  return CATEGORIES.map((category) => scoreCategory(category, ctx));
+  const evaluated = CATEGORIES.map((category) => ({
+    category,
+    results: RULES.filter((rule) => rule.categoryId === category.id).map(
+      (rule): Evaluated => ({ rule, result: rule.evaluate(ctx) }),
+    ),
+  }));
+
+  // A category where every rule is N/A (e.g. PageSpeed unavailable) gives
+  // its weight to the others so the total stays out of 100.
+  const isActive = (results: Evaluated[]) =>
+    results.some(({ result }) => result.status !== "na");
+  const activeTotal = evaluated
+    .filter(({ results }) => isActive(results))
+    .reduce((sum, { category }) => sum + category.maxScore, 0);
+  const scale = activeTotal > 0 ? 100 / activeTotal : 0;
+
+  return evaluated.map(({ category, results }) =>
+    scoreCategory(
+      category,
+      results,
+      isActive(results) ? category.maxScore * scale : 0,
+    ),
+  );
 }
 
-function scoreCategory(category: CategoryDef, ctx: RuleContext): AuditCategory {
-  const rules = RULES.filter((rule) => rule.categoryId === category.id);
-  const evaluated = rules.map((rule) => ({ rule, result: rule.evaluate(ctx) }));
-
+function scoreCategory(
+  category: CategoryDef,
+  evaluated: Evaluated[],
+  maxScore: number,
+): AuditCategory {
   // Denominator only includes applicable (non-N/A) rules so N/A items
   // don't inflate scores by getting full credit or shrinking weights.
   const applicable = evaluated.filter(({ result }) => result.status !== "na");
@@ -213,7 +291,7 @@ function scoreCategory(category: CategoryDef, ctx: RuleContext): AuditCategory {
 
   const items: AuditItem[] = evaluated
     .map(({ rule, result }) => {
-      if (result.status === "na") {
+      if (result.status === "na" || denominator === 0) {
         return {
           id: rule.id,
           label: rule.label,
@@ -224,10 +302,7 @@ function scoreCategory(category: CategoryDef, ctx: RuleContext): AuditCategory {
           score: 0,
         };
       }
-      const participates = denominator > 0;
-      const itemMax = participates
-        ? (category.maxScore * (rule.multiplier ?? 1)) / denominator
-        : 0;
+      const itemMax = (maxScore * (rule.multiplier ?? 1)) / denominator;
       return {
         id: rule.id,
         label: rule.label,
@@ -245,7 +320,7 @@ function scoreCategory(category: CategoryDef, ctx: RuleContext): AuditCategory {
     name: category.name,
     description: category.description,
     score: round1(items.reduce((sum, item) => sum + item.score, 0)),
-    maxScore: category.maxScore,
+    maxScore: round1(maxScore),
     naExcluded: evaluated.length - applicable.length,
     items,
   };
@@ -285,30 +360,6 @@ function scoreBand(score: number): AuditBand {
     interpretation:
       "The page exposes strong crawlability, structure, schema, and trust signals.",
   };
-}
-
-// ---------------------------------------------------------------------------
-// Fetch helpers: context.dev only. No direct calls to the audited site.
-// ---------------------------------------------------------------------------
-
-async function scrapeMarkdown(
-  client: ContextDev,
-  url: string,
-): Promise<string> {
-  const result = await client.web.webScrapeMd({
-    url,
-    includeLinks: true,
-    includeImages: false,
-    useMainContentOnly: true,
-  });
-  return result.markdown ?? "";
-}
-
-async function scrapeHtml(client: ContextDev, url: string): Promise<string> {
-  // waitForMs gives client-side JSON-LD injectors (Next.js head, Wix, Shopify
-  // apps, etc.) a chance to land before we grab the HTML.
-  const result = await client.web.webScrapeHTML({ url, waitForMs: 3000 });
-  return result.html ?? "";
 }
 
 // ---------------------------------------------------------------------------
@@ -356,6 +407,21 @@ function detectNoIndex(html: string): boolean {
     const content = getAttr(tag, "content") ?? "";
     return /robots|googlebot/i.test(name ?? "") && /\bnoindex\b/i.test(content);
   });
+}
+
+function extractHtmlLang(html: string): string | null {
+  const tag = html.match(/<html\b[^>]*>/i)?.[0];
+  const lang = tag ? getAttr(tag, "lang") : null;
+  return lang?.trim() || null;
+}
+
+function countImages(html: string): { total: number; withAlt: number } {
+  const tags = html.match(/<img\b[^>]*>/gi) ?? [];
+  return {
+    total: tags.length,
+    // alt="" is a valid decorative-image marker, so presence is what counts.
+    withAlt: tags.filter((tag) => getAttr(tag, "alt") !== null).length,
+  };
 }
 
 function getAttr(tag: string, attr: string): string | null {

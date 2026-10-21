@@ -13,6 +13,8 @@
  * Everything downstream (scoring, agent prompts, UI) derives from this file.
  */
 import type { AuditStatus } from "@/lib/audit-types";
+import type { PageSpeedResult } from "@/lib/pagespeed";
+import type { LlmsTxtInfo, SitemapInfo } from "@/lib/site-files";
 
 export type RuleDependency =
   | "url"
@@ -30,7 +32,14 @@ export type RuleDependency =
   | "paragraphs"
   | "data-points"
   | "date-signals"
-  | "readability";
+  | "readability"
+  | "http"
+  | "robots-txt"
+  | "llms-txt"
+  | "sitemap"
+  | "meta"
+  | "images"
+  | "pagespeed";
 
 export type SchemaSummary = {
   hasOrganization: boolean;
@@ -99,6 +108,25 @@ export type RuleContext = {
   faqStatus: AuditStatus;
   /** Precomputed byline presence, shared by C4, D1, etc. */
   hasByline: boolean;
+
+  /** HTTP status of the final response and number of redirect hops. */
+  httpStatus: number;
+  redirects: number;
+
+  /** Site files from the page origin. null/false when missing. */
+  robotsTxt: string | null;
+  llmsTxt: LlmsTxtInfo;
+  sitemap: SitemapInfo;
+
+  /** Lighthouse mobile data; null when PageSpeed Insights was unavailable. */
+  pageSpeed: PageSpeedResult | null;
+
+  /** Classic SEO head/body signals. */
+  htmlLang: string | null;
+  viewport: string | null;
+  openGraph: { title: boolean; description: boolean; image: boolean };
+  twitterCard: boolean;
+  images: { total: number; withAlt: number };
 };
 
 export type RuleEvaluation = {
@@ -212,7 +240,7 @@ export const RULES: Rule[] = [
             : "fail";
       return {
         status,
-        evidence: `${htmlWords} readable words were found in raw HTML; Context.dev extracted ${ctx.words} words from the page.`,
+        evidence: `${htmlWords} readable words were found in the raw HTML; ${ctx.words} words were extracted as main content.`,
       };
     },
   },
