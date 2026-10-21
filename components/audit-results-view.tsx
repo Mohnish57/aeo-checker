@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  AlertTriangle,
   ArrowLeft,
   Check,
   CheckCircle2,
@@ -167,31 +166,6 @@ export function AuditResultsView({ audit }: AuditResultsViewProps) {
           </div>
         </div>
       </section>
-
-      {/* EXPERIMENTAL ADVISORY */}
-      <aside
-        role="note"
-        aria-label="Experimental field advisory"
-        className="border-b hairline bg-amber/[0.06]"
-      >
-        <div className="mx-auto flex w-full max-w-7xl items-start gap-4 px-5 py-4 sm:px-8 sm:py-5">
-          <AlertTriangle
-            aria-hidden
-            className="mt-0.5 size-4 shrink-0 text-amber"
-          />
-          <div className="min-w-0 flex-1">
-            <div className="font-mono text-[0.6875rem] uppercase tracking-[0.22em] text-amber">
-              ◢ experimental field
-            </div>
-            <p className="mt-1.5 text-sm/6 text-pretty text-muted sm:text-base/7">
-              AEO (answer engine optimization), also called GEO or AI SEO, is
-              new and changes fast. ChatGPT, Claude, Perplexity and Google AI
-              Overviews update their crawlers and retrieval often. Treat this
-              score as a directional snapshot, not a guarantee of citations.
-            </p>
-          </div>
-        </div>
-      </aside>
 
       {/* FIX PROMPTS */}
       <section id="fixes" className="border-b hairline">
