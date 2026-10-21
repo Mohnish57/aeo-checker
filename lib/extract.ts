@@ -11,7 +11,7 @@ import TurndownService from "turndown";
 
 import {
   bodyOf,
-  countElementsUpTo,
+  isWithinNodeLimits,
   parsePage,
   prunedClone,
   reparse,
@@ -28,12 +28,15 @@ turndown.remove((node) => DROPPED_TAGS.has(node.nodeName.toUpperCase()));
 
 /**
  * Readability is slow on huge DOMs (seconds at a few hundred thousand
- * elements). Above this we skip it and use the structural fallbacks.
+ * elements), and it re-serializes and re-parses the page on retries, so a
+ * flood of comment or text nodes costs it too. Above either limit we skip
+ * it and use the structural fallbacks.
  * Readability's own maxElemsToParse is passed too, but it counts with
  * getElementsByTagName("*"), which linkedom answers with 0, so the
  * pre-check here is what actually enforces the limit.
  */
 export const MAX_READABILITY_ELEMENTS = 20_000;
+export const MAX_READABILITY_NODES = 60_000;
 
 /**
  * Turndown joins its output with string concatenation and indexed reads,
@@ -90,8 +93,11 @@ function extractMainNode(page: ParsedPage): Node {
   const body = bodyOf(document);
   const bodyWords = wordCount(body ? body.textContent : documentText(document));
 
-  const elements = countElementsUpTo(document, MAX_READABILITY_ELEMENTS);
-  if (elements <= MAX_READABILITY_ELEMENTS) {
+  const readable = isWithinNodeLimits(document, {
+    maxElements: MAX_READABILITY_ELEMENTS,
+    maxNodes: MAX_READABILITY_NODES,
+  });
+  if (readable) {
     try {
       // Readability mutates the document, so give it its own copy.
       const article = new Readability(reparse(page), {

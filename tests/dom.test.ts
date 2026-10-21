@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_DOM_DEPTH,
   MAX_DOM_NODES,
+  isWithinNodeLimits,
   limitNesting,
   parsePage,
   prunedClone,
@@ -44,6 +45,12 @@ describe("limitNesting", () => {
     expect(limitNesting("&amp;".repeat(MAX_DOM_NODES + 1)).truncated).toBe(true);
   });
 
+  it.each(["<!---->", "<![CDATA[x]]>"])("counts each %s as a node", (chunk) => {
+    const result = limitNesting(chunk.repeat(MAX_DOM_NODES + 1));
+    expect(result.truncated).toBe(true);
+    expect(result.html).toBe(chunk.repeat(MAX_DOM_NODES)); // cut at the "<"
+  });
+
   it.each([
     ["unclosed list items", "<ul>" + "<li>x".repeat(5000)],
     ["unclosed paragraphs", "<p>x".repeat(5000)],
@@ -52,6 +59,15 @@ describe("limitNesting", () => {
     ["sibling blocks", "<div>x</div>".repeat(5000)],
   ])("does not count %s as nesting", (_label, html) => {
     expect(limitNesting(html).truncated).toBe(false);
+  });
+});
+
+describe("isWithinNodeLimits", () => {
+  it("counts comments and text toward the node limit, not the element limit", () => {
+    const { document } = parsePage("<div>" + "<!---->".repeat(100) + "</div>");
+    expect(isWithinNodeLimits(document, { maxElements: 1, maxNodes: 101 })).toBe(true);
+    expect(isWithinNodeLimits(document, { maxElements: 1, maxNodes: 100 })).toBe(false);
+    expect(isWithinNodeLimits(document, { maxElements: 0, maxNodes: 1000 })).toBe(false);
   });
 });
 

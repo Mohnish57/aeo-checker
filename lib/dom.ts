@@ -6,8 +6,8 @@
  * therefore quadratic in nesting depth: 3 MB of "<h1>" (750k levels) takes
  * minutes. Browsers stop nesting at 512 levels (Blink), and real pages stay
  * far below that, so we cut the HTML just before the first tag that would
- * nest deeper than MAX_DOM_DEPTH. We also cut once MAX_DOM_NODES elements
- * and text runs have been seen: building millions of DOM nodes costs seconds
+ * nest deeper than MAX_DOM_DEPTH. We also cut once MAX_DOM_NODES elements,
+ * text runs, entities, comments and CDATA sections have been seen: building millions of DOM nodes costs seconds
  * of CPU and GC, and real pages have tens of thousands at most. A probe pass
  * with htmlparser2's own Parser finds the cut point using exactly the rules
  * linkedom will apply.
@@ -58,9 +58,21 @@ class LimitProbe extends Parser {
     this.count(this.startIndex);
     super.ontextentity(codepoint, endIndex);
   }
+
+  // linkedom makes a comment node for every comment, and for every CDATA
+  // section (a comment in HTML mode). `startIndex` is the token's "<".
+  oncomment(start: number, endIndex: number, offset: number): void {
+    this.count(this.startIndex);
+    super.oncomment(start, endIndex, offset);
+  }
+
+  oncdata(start: number, endIndex: number, offset: number): void {
+    this.count(this.startIndex);
+    super.oncdata(start, endIndex, offset);
+  }
 }
 
-/** Returns `html`, cut before the first tag or text past a limit. */
+/** Returns `html`, cut before the first node past a limit. */
 export function limitNesting(html: string): { html: string; truncated: boolean } {
   try {
     const probe = new LimitProbe();
@@ -92,17 +104,25 @@ export function bodyOf(document: Document): Element | null {
   return document.querySelector("body");
 }
 
-/** Counts elements, stopping as soon as the count exceeds `limit`. */
-export function countElementsUpTo(root: Node, limit: number): number {
-  let count = 0;
-  const stack: Node[] = [root];
-  while (stack.length && count <= limit) {
+/**
+ * True when `root` has at most `maxElements` elements and `maxNodes` nodes
+ * of any kind (text, comments included). Stops walking at the first limit.
+ */
+export function isWithinNodeLimits(
+  root: Node,
+  limits: { maxElements: number; maxNodes: number },
+): boolean {
+  let elements = 0;
+  let nodes = 0;
+  const stack: Node[] = [...root.childNodes];
+  while (stack.length) {
     const node = stack.pop()!;
-    if (node.nodeType === 1) count++;
+    if (++nodes > limits.maxNodes) return false;
+    if (node.nodeType === 1 && ++elements > limits.maxElements) return false;
     const children = node.childNodes;
-    for (let i = children.length - 1; i >= 0; i--) stack.push(children[i]);
+    for (let i = 0; i < children.length; i++) stack.push(children[i]);
   }
-  return count;
+  return true;
 }
 
 export type PruneLimits = {

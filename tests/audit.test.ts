@@ -152,6 +152,9 @@ describe("adversarial HTML", () => {
     ["<div></div>", "<div>".repeat(511)], // blank flood under deep nesting
     ["<li>x", "<ol>"],
     ["&#8211;", ""], // one text node per entity
+    ["<!---->", "<html><body><p>hello world</p><div>"], // one comment node each
+    ["<!--x-->", ""],
+    ["<![CDATA[x]]>", ""], // a comment node in HTML mode
   ])(
     "audits a 3 MB page of %j (prefix %j) in under 3 seconds",
     (chunk, prefix) => {
@@ -162,6 +165,19 @@ describe("adversarial HTML", () => {
     },
     60_000,
   );
+});
+
+describe("adversarial HTML, back to back", () => {
+  // A comment flood used to slow down with every run (2.3 -> 12.4 s) as
+  // Readability re-parsed it and the heap grew past 1 GB.
+  it("keeps a 3 MB comment flood under 3 seconds on every one of 4 runs", () => {
+    const html = "<html><body><p>hello world</p><div>" + "<!---->".repeat(3_000_000 / 7);
+    for (let run = 0; run < 4; run++) {
+      const start = performance.now();
+      auditFromSources(makeSources({ html }));
+      expect([run, performance.now() - start < 3000]).toEqual([run, true]);
+    }
+  }, 120_000);
 });
 
 describe("HTML entities", () => {
