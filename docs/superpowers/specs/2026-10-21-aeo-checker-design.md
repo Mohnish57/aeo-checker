@@ -64,11 +64,11 @@ Existing 32 checks (A1–F6) are kept with logic unchanged, except evidence stri
 ### A. Technical AI Crawlability (added)
 | ID | Check | Pass | Partial | Fail |
 |---|---|---|---|---|
-| A13 | AI crawlers allowed in robots.txt for this URL (GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, Claude-SearchBot, PerplexityBot, Google-Extended, Applebot-Extended) | none blocked | some blocked | all blocked |
-| A14 | `/llms.txt` exists and is plain text/markdown | 200 + non-HTML body with a `#` heading | 200 but HTML/empty | missing |
-| A15 | Page returns HTTP 200 directly or via ≤1 redirect | 200, ≤1 hop | 2–5 hops | non-200 |
+| A13 | AI crawlers allowed in robots.txt for this URL | no AI bot blocked | only training bots blocked (GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, CCBot) | any answer/search bot blocked (OAI-SearchBot, ChatGPT-User, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User) |
+| A14 | `/llms.txt` exists and is plain text/markdown | 200 + non-HTML body with a `#` heading | 200 non-HTML without a heading | missing, or HTML catch-all page |
+| A15 | Page reached directly or via ≤1 redirect with HTTP 200 | 200, ≤1 hop | 2–5 hops or other 2xx | — (≥400 is reported as an audit error) |
 
-A13 uses the `robots-parser` package. Multiplier 2 (blocking AI crawlers is the single biggest AEO failure).
+A13 uses the `robots-parser` package. Multiplier 2 (blocking AI answer bots is the single biggest AEO failure). Training bots are scored as partial, not fail: blocking them is a legitimate business choice that does not stop live citations. A14 multiplier 0.5.
 
 ### G. Classic SEO (new category)
 | ID | Check | Pass | Partial | Fail |
@@ -106,7 +106,7 @@ Initial category weights (sum 100), to be tuned against CheckAEO:
 | G. Classic SEO | 12 |
 | H. Performance | 8 |
 | E. Off-site / Citation Surface | 6 |
-| F. Freshness & Governance | 2 |
+| F. Measurement & Governance | 2 |
 
 Bands unchanged: ≤40 Critical, ≤55 Below average, ≤70 Average, ≤85 Strong, >85 Excellent.
 
