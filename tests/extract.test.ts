@@ -16,6 +16,10 @@ describe("htmlToMainMarkdown", () => {
     expect(md).toMatch(/^## How widgets are priced$/m);
   });
 
+  it("keeps the page H1", () => {
+    expect(md).toMatch(/^# What a widget is$/m);
+  });
+
   it("keeps list items", () => {
     expect(md).toMatch(/^-\s+Starter: \$20 per seat$/m);
   });

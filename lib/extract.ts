@@ -20,17 +20,29 @@ turndown.remove((node) => DROPPED_TAGS.has(node.nodeName.toUpperCase()));
 export function htmlToMainMarkdown(html: string): string {
   if (!html.trim()) return "";
   try {
-    return turndown
-      .turndown(extractMainHtml(html))
+    const { document } = parseHTML(html);
+    const markdown = turndown
+      .turndown(extractMainHtml(html, document))
       .replace(/\n{3,}/g, "\n\n")
       .trim();
+    return withPageH1(markdown, document);
   } catch {
     return "";
   }
 }
 
-function extractMainHtml(html: string): string {
-  const bodyWords = wordCount(parseHTML(html).document.body?.textContent);
+/**
+ * Readability drops an <h1> that duplicates the page title. Heading rules
+ * expect the H1 in the Markdown, so restore it when none survived.
+ */
+function withPageH1(markdown: string, document: Document): string {
+  if (/^#\s/m.test(markdown)) return markdown;
+  const h1 = document.querySelector("h1")?.textContent?.replace(/\s+/g, " ").trim();
+  return h1 ? `# ${h1}\n\n${markdown}`.trim() : markdown;
+}
+
+function extractMainHtml(html: string, parsed: Document): string {
+  const bodyWords = wordCount(parsed.body?.textContent);
 
   try {
     // Readability mutates the document, so give it its own copy.
