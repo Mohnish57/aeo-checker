@@ -238,3 +238,40 @@ describe("fixture sanity", () => {
     expect(ARTICLE_HTML).toContain('alt="Widget diagram"');
   });
 });
+
+describe("threshold boundaries", () => {
+  const title = (length: number) => withHead(`<title>${"a".repeat(length)}</title>`);
+
+  it("G1 passes a 60-character title and is partial at 61", () => {
+    expect(statusOf(run({ html: title(60) }), "G1")).toBe("pass");
+    expect(statusOf(run({ html: title(61) }), "G1")).toBe("partial");
+  });
+
+  it("H2 passes LCP of exactly 2.5s", () => {
+    const audit = run({ pageSpeed: { performanceScore: 95, lcpMs: 2500, cls: 0, tbtMs: 0 } });
+    expect(statusOf(audit, "H2")).toBe("pass");
+  });
+
+  it("H3 passes CLS of exactly 0.1", () => {
+    const audit = run({ pageSpeed: { performanceScore: 95, lcpMs: 1000, cls: 0.1, tbtMs: 0 } });
+    expect(statusOf(audit, "H3")).toBe("pass");
+  });
+
+  it("G3 is partial when half the images have alt text", () => {
+    const body = '<img src="a" alt="a"><img src="b">';
+    const audit = run({ html: withHead("", body) });
+    expect(statusOf(audit, "G3")).toBe("partial");
+    expect(evidenceOf(audit, "G3")).toBe("1 of 2 image(s) have an alt attribute.");
+  });
+
+  it("G4 is partial with only a Twitter card", () => {
+    const audit = run({ html: withHead('<meta name="twitter:card" content="summary">') });
+    expect(statusOf(audit, "G4")).toBe("partial");
+  });
+
+  it("A15 is partial for a non-200 2xx response without redirects", () => {
+    const audit = run({ status: 203, redirects: 0 });
+    expect(statusOf(audit, "A15")).toBe("partial");
+    expect(evidenceOf(audit, "A15")).toBe("HTTP 203 after 0 redirect(s).");
+  });
+});
