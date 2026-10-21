@@ -108,6 +108,19 @@ describe("DNS answers", () => {
   });
 });
 
+describe("DNS rebinding", () => {
+  it("blocks at connect time when DNS answers public, then private", async () => {
+    // The pre-request check sees a public address; the lookup the socket
+    // uses moments later returns loopback. The connect-time guard must win.
+    dns.resolve4
+      .mockResolvedValueOnce(["93.184.215.14"])
+      .mockResolvedValue(["127.0.0.1"]);
+    const result = await failure(safeFetch("http://rebind.test/"));
+    expect(result.code).toBe("blocked-address");
+    expect(dns.resolve4).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("IPv4-compatible IPv6", () => {
   it.each(["::7f00:1", "::a00:1", "::8.8.8.8", "::"])("treats %s as non-public", (ip) => {
     expect(isPublicAddress(ip)).toBe(false);
