@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { AuditForm } from "@/components/audit-form";
+import { jsonLdScript } from "@/lib/json-ld";
 
 type HomeProps = {
   searchParams: Promise<{ domain?: string }>;
@@ -110,11 +111,11 @@ export default async function Home({ searchParams }: HomeProps) {
     <main className="relative min-h-[calc(100dvh-4rem)] overflow-hidden bg-canvas">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(faqSchema) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(howToSchema) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(howToSchema) }}
       />
       <div
         aria-hidden

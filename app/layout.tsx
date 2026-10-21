@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 
+import { jsonLdScript } from "@/lib/json-ld";
+
 import "./globals.css";
 
 const inter = Inter({
@@ -141,11 +143,11 @@ export default function RootLayout({
       <body className="font-sans">
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareSchema) }}
+          dangerouslySetInnerHTML={{ __html: jsonLdScript(softwareSchema) }}
         />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
+          dangerouslySetInnerHTML={{ __html: jsonLdScript(websiteSchema) }}
         />
         <div className="isolate flex min-h-dvh flex-col">
           <div className="grow">{children}</div>

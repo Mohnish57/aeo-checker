@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { AuditForm } from "@/components/audit-form";
 import { AuditResultsView } from "@/components/audit-results-view";
+import { auditPageSchemas, jsonLdScript } from "@/lib/json-ld";
 import { performAudit } from "@/lib/perform-audit";
 
 export const runtime = "nodejs";
@@ -89,52 +90,20 @@ export default async function AuditPage({ params, searchParams }: PageProps) {
     );
   }
 
-  const breadcrumbSchema = {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    itemListElement: [
-      {
-        "@type": "ListItem",
-        position: 1,
-        name: "AEO Checker",
-        item: siteUrl,
-      },
-      {
-        "@type": "ListItem",
-        position: 2,
-        name: decoded,
-        item: `${siteUrl}/audit/${encodeURIComponent(decoded)}`,
-      },
-    ],
-  };
-
-  const reportSchema = {
-    "@context": "https://schema.org",
-    "@type": "WebPage",
-    name: `AEO Checker | ${decoded}`,
-    url: `${siteUrl}/audit/${encodeURIComponent(decoded)}`,
-    description: `AEO and SEO audit and 0–100 score for ${decoded}.`,
-    isPartOf: {
-      "@type": "WebSite",
-      name: "AEO Checker",
-      url: siteUrl,
-    },
-    about: {
-      "@type": "WebSite",
-      url: `https://${decoded}`,
-      name: decoded,
-    },
-  };
+  const [breadcrumbSchema, reportSchema] = auditPageSchemas(
+    siteUrl,
+    result.audit.url,
+  );
 
   return (
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(breadcrumbSchema) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(reportSchema) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(reportSchema) }}
       />
       <AuditResultsView audit={result.audit} />
     </>
