@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   AlertTriangle,
   ArrowLeft,
-  ArrowUpRight,
   Check,
   CheckCircle2,
   CircleDashed,
@@ -21,38 +20,10 @@ import type {
   AuditResult,
   AuditStatus,
 } from "@/lib/audit-types";
-import { pickHeroLogo, uniqueIndustryLabels } from "@/lib/brand";
-import type { BrandInfo } from "@/lib/brand-types";
 
-const CONTEXT_DEV_ENDPOINTS = [
-  "/web/scrape/html",
-  "/web/scrape/markdown",
-  "/web/scrape/sitemap",
-] as const;
+type AuditResultsViewProps = { audit: AuditResult };
 
-function contextDevHref(host: string, campaign: string): string {
-  const params = new URLSearchParams({
-    utm_source: "ai-seo-audit",
-    utm_medium: "audit_hero",
-    utm_campaign: campaign,
-    utm_content: host,
-  });
-  return `https://context.dev/?${params.toString()}`;
-}
-
-type AuditResultsViewProps = {
-  audit: AuditResult;
-  cached: boolean;
-  updatedAt?: number;
-  brand?: BrandInfo | null;
-};
-
-export function AuditResultsView({
-  audit,
-  cached,
-  updatedAt,
-  brand,
-}: AuditResultsViewProps) {
+export function AuditResultsView({ audit }: AuditResultsViewProps) {
   const score = Math.round(audit.score);
   const percent = Math.max(0, Math.min(100, audit.score));
   const [refreshing, setRefreshing] = useState(false);
@@ -86,9 +57,7 @@ export function AuditResultsView({
 
   function reRunAudit() {
     setRefreshing(true);
-    const currentUrl = new URL(window.location.href);
-    currentUrl.searchParams.set("refresh", "1");
-    window.location.href = currentUrl.toString();
+    window.location.reload();
   }
 
   return (
@@ -104,26 +73,18 @@ export function AuditResultsView({
             new audit
           </Link>
           <div className="flex flex-wrap items-center gap-3 font-mono text-xs uppercase tracking-[0.18em] text-muted">
-            {cached ? <span>cached</span> : <span>fresh</span>}
-            {updatedAt ? <span className="text-ink/40">·</span> : null}
-            {updatedAt ? (
-              <time dateTime={new Date(updatedAt).toISOString()}>
-                {formatTimestamp(updatedAt)}
-              </time>
-            ) : null}
-            {cached ? (
-              <>
-                <span className="text-ink/40">·</span>
-                <button
-                  type="button"
-                  disabled={refreshing}
-                  onClick={reRunAudit}
-                  className="underline decoration-ink/20 decoration-1 underline-offset-4 transition hover:text-teal hover:decoration-teal disabled:opacity-50"
-                >
-                  {refreshing ? "refreshing..." : "re-run audit"}
-                </button>
-              </>
-            ) : null}
+            <time dateTime={audit.fetchedAt}>
+              {formatTimestamp(Date.parse(audit.fetchedAt))}
+            </time>
+            <span className="text-ink/40">·</span>
+            <button
+              type="button"
+              disabled={refreshing}
+              onClick={reRunAudit}
+              className="underline decoration-ink/20 decoration-1 underline-offset-4 transition hover:text-teal hover:decoration-teal disabled:opacity-50"
+            >
+              {refreshing ? "re-running..." : "re-run audit"}
+            </button>
           </div>
         </div>
       </div>
@@ -142,37 +103,10 @@ export function AuditResultsView({
               <BandBadge label={audit.band.label} />
             </div>
             <div className="flex flex-row space-x-2 items-end justify-start mb-2">
-              {brand?.logos[0] ? (
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-lg p-1.5 bg-white outline-1 -outline-offset-1 outline-ink/10 flex flex-row space-x-2">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={brand?.logos[0].url}
-                    alt={`${brand?.title ?? audit.host} logo`}
-                    className="max-h-full max-w-full object-contain"
-                  />
-                </div>
-              ) : null}
               <h1 className="mt-5 text-4xl font-medium tracking-[-0.03em] text-balance text-ink sm:text-5xl/[1.05]">
-                {brand?.title ?? audit.title ?? brand?.title ?? audit.host}
+                {audit.title ?? audit.host}
               </h1>
             </div>
-            {brand?.slogan ? (
-              <div className="mt-0.5 truncate font-mono text-[0.6875rem] uppercase tracking-[0.22em] text-muted">
-                {brand?.slogan}
-              </div>
-            ) : null}
-            {brand?.industries.length ? (
-              <ul role="list" className="flex flex-wrap gap-1.5 my-2">
-                {brand?.industries.map((label) => (
-                  <li
-                    key={label.subindustry}
-                    className="rounded-full bg-soft px-2.5 py-1 font-mono text-[0.625rem] uppercase tracking-[0.18em] text-muted outline-1 -outline-offset-1 outline-ink/5"
-                  >
-                    {label.subindustry}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
             <a
               href={audit.url}
               target="_blank"
@@ -338,20 +272,26 @@ export function AuditResultsView({
               Fetch trace
             </h2>
           </header>
-          <dl className="grid gap-0 divide-y divide-ink/10 border-y hairline font-mono text-sm">
-            <DiagnosticRow
-              label="Context.dev HTML"
-              value={audit.diagnostics.contextDevHtml}
-            />
-            <DiagnosticRow
-              label="Context.dev markdown"
-              value={audit.diagnostics.contextDevMarkdown}
-            />
-            <DiagnosticRow
-              label="JSON-LD parse failures"
-              value={audit.diagnostics.jsonLdParseFailures}
-            />
-          </dl>
+          <div>
+            <dl className="grid gap-0 divide-y divide-ink/10 border-y hairline font-mono text-sm">
+              <DiagnosticRow label="HTTP status" value={audit.diagnostics.httpStatus} />
+              <DiagnosticRow label="Redirects" value={audit.diagnostics.redirects} />
+              <DiagnosticRow label="Main-content extract" value={audit.diagnostics.markdownExtract} />
+              <DiagnosticRow label="robots.txt" value={audit.diagnostics.robotsTxt} />
+              <DiagnosticRow label="llms.txt" value={audit.diagnostics.llmsTxt} />
+              <DiagnosticRow label="Sitemap" value={audit.diagnostics.sitemap} />
+              <DiagnosticRow label="PageSpeed Insights" value={audit.diagnostics.pageSpeed} />
+              <DiagnosticRow label="JSON-LD parse failures" value={audit.diagnostics.jsonLdParseFailures} />
+            </dl>
+            <a
+              href={audit.diagnostics.pageSpeedReportUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-4 inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-[0.18em] text-muted transition hover:text-ink"
+            >
+              Full PageSpeed report <ExternalLink className="size-3.5" />
+            </a>
+          </div>
         </div>
       </section>
     </main>
@@ -371,7 +311,10 @@ function CategorySection({
   copiedKey: string;
   onCopy: (key: string, prompt: string) => void;
 }) {
-  const percent = Math.round((category.score / category.maxScore) * 100);
+  const percent =
+    category.maxScore > 0
+      ? Math.round((category.score / category.maxScore) * 100)
+      : null;
   const counts = useMemo(() => countStatuses([category]), [category]);
 
   return (
@@ -387,6 +330,12 @@ function CategorySection({
           <p className="mt-5 max-w-prose text-base/7 text-pretty text-muted">
             {category.description}
           </p>
+          {percent === null && category.id === "H" ? (
+            <p className="mt-3 text-sm/6 text-muted">
+              Performance data was unavailable for this run. Re-run the audit,
+              or open the full PageSpeed report from the diagnostics section.
+            </p>
+          ) : null}
 
           <div className="mt-8 flex items-baseline justify-between font-mono">
             <span className="text-xs uppercase tracking-[0.22em] text-muted">
@@ -396,12 +345,12 @@ function CategorySection({
               {category.score.toFixed(1)}
               <span className="text-ink/30">/{category.maxScore}</span>
               <span className="ml-2 text-xs uppercase tracking-[0.22em] text-muted">
-                {percent}%
+                {percent === null ? "n/a" : `${percent}%`}
               </span>
             </span>
           </div>
           <div className="mt-3 h-1 w-full bg-ink/5">
-            <div className="h-full bg-teal" style={{ width: `${percent}%` }} />
+            <div className="h-full bg-teal" style={{ width: `${percent ?? 0}%` }} />
           </div>
 
           <dl className="mt-5 grid grid-cols-4 gap-2 font-mono">

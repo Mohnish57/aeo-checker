@@ -1,6 +1,5 @@
 /**
- * HTML → main-content Markdown, replacing context.dev's
- * `webScrapeMd({ useMainContentOnly: true })`.
+ * HTML → main-content Markdown (main content only).
  *
  * Readability picks the main content; if it returns too little (common on
  * homepages and landing pages) we fall back to <main>/<article>, then <body>.

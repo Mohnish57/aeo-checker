@@ -137,7 +137,7 @@ export function auditFromSources(sources: PageSources): AuditResult {
       httpStatus: ctx.httpStatus,
       redirects: ctx.redirects,
       markdownExtract: ctx.markdown ? "ready" : "empty",
-      robotsTxt: ctx.robotsTxt ? "found" : "missing",
+      robotsTxt: ctx.robotsTxt !== null ? "found" : "missing",
       llmsTxt: isRealLlmsTxt(ctx.llmsTxt) ? "found" : "missing",
       sitemap: ctx.sitemap.found ? "found" : "missing",
       pageSpeed: ctx.pageSpeed ? "ready" : "unavailable",

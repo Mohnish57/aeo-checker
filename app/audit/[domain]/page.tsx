@@ -3,18 +3,17 @@ import Link from "next/link";
 
 import { AuditForm } from "@/components/audit-form";
 import { AuditResultsView } from "@/components/audit-results-view";
-import { fetchBrand } from "@/lib/brand";
 import { performAudit } from "@/lib/perform-audit";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.freeaiseoaudit.com/";
+  process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
 type PageProps = {
   params: Promise<{ domain: string }>;
-  searchParams: Promise<{ refresh?: string; url?: string }>;
+  searchParams: Promise<{ url?: string }>;
 };
 
 function decodeDomain(raw: string): string {
@@ -38,13 +37,12 @@ function resolveAuditUrl(domainParam: string, urlParam?: string): string {
 
 export async function generateMetadata({
   params,
-  searchParams,
 }: PageProps): Promise<Metadata> {
   const { domain } = await params;
   const decoded = decodeDomain(domain);
   const canonical = `/audit/${encodeURIComponent(decoded)}`;
-  const title = `${decoded} | AI SEO Audit & Visibility Score`;
-  const description = `See how ${decoded} scores for ChatGPT, Claude, and Perplexity. Free AI SEO audit covering crawlability, schema, content chunking, and trust signals, with a copy-paste fix prompt.`;
+  const title = `${decoded} | AEO & SEO Score`;
+  const description = `See how ${decoded} scores for ChatGPT, Claude, Perplexity, and Google. Free AEO and SEO audit covering AI crawler access, llms.txt, schema, content structure, classic SEO, and page speed, with a copy-paste fix prompt.`;
   return {
     title: { absolute: title },
     description,
@@ -75,28 +73,10 @@ export async function generateMetadata({
 
 export default async function AuditPage({ params, searchParams }: PageProps) {
   const { domain } = await params;
-  const { url: urlParam, refresh } = await searchParams;
+  const { url: urlParam } = await searchParams;
   const decoded = decodeDomain(domain);
-  const forceRefresh = refresh === "1";
   const auditTarget = resolveAuditUrl(decoded, urlParam);
-
-  const apiKey = process.env.CONTEXT_DEV_API_KEY;
-  const [result, brandResult] = await Promise.all([
-    performAudit(auditTarget, forceRefresh),
-    apiKey
-      ? fetchBrand(decoded, apiKey)
-      : Promise.resolve({ brand: null, cached: false }),
-  ]);
-
-  if (result.status === "missing-env") {
-    return (
-      <ErrorScreen
-        eyebrow="missing config"
-        title="Set CONTEXT_DEV_API_KEY."
-        message="The server is missing CONTEXT_DEV_API_KEY. Set the environment variable and reload."
-      />
-    );
-  }
+  const result = await performAudit(auditTarget);
 
   if (result.status === "error") {
     return (
@@ -116,7 +96,7 @@ export default async function AuditPage({ params, searchParams }: PageProps) {
       {
         "@type": "ListItem",
         position: 1,
-        name: "AI SEO Audit",
+        name: "AEO Checker",
         item: siteUrl,
       },
       {
@@ -128,15 +108,15 @@ export default async function AuditPage({ params, searchParams }: PageProps) {
     ],
   };
 
-  const reportSchema: Record<string, unknown> = {
+  const reportSchema = {
     "@context": "https://schema.org",
     "@type": "WebPage",
-    name: `AI SEO Audit | ${decoded}`,
+    name: `AEO Checker | ${decoded}`,
     url: `${siteUrl}/audit/${encodeURIComponent(decoded)}`,
-    description: `AI SEO readability audit and 0–100 visibility score for ${decoded}.`,
+    description: `AEO and SEO audit and 0–100 score for ${decoded}.`,
     isPartOf: {
       "@type": "WebSite",
-      name: "AI SEO Audit",
+      name: "AEO Checker",
       url: siteUrl,
     },
     about: {
@@ -145,9 +125,6 @@ export default async function AuditPage({ params, searchParams }: PageProps) {
       name: decoded,
     },
   };
-  if (result.updatedAt) {
-    reportSchema.dateModified = new Date(result.updatedAt).toISOString();
-  }
 
   return (
     <>
@@ -159,12 +136,7 @@ export default async function AuditPage({ params, searchParams }: PageProps) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(reportSchema) }}
       />
-      <AuditResultsView
-        audit={result.audit}
-        cached={result.cached}
-        updatedAt={result.updatedAt}
-        brand={brandResult.brand}
-      />
+      <AuditResultsView audit={result.audit} />
     </>
   );
 }

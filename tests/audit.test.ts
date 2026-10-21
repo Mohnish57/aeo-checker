@@ -89,6 +89,13 @@ describe("auditFromSources", () => {
   });
 });
 
+describe("robots.txt diagnostics", () => {
+  it("reports an empty robots.txt as found", () => {
+    const result = auditFromSources(makeSources({ robotsTxt: "" }));
+    expect(result.diagnostics.robotsTxt).toBe("found");
+  });
+});
+
 describe("assertAuditablePage", () => {
   const page = (status: number, contentType = "text/html", body = "<html>") => ({
     finalUrl: "https://a.com/",
