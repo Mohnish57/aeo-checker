@@ -184,11 +184,10 @@ export function AuditResultsView({ audit }: AuditResultsViewProps) {
               ◢ experimental field
             </div>
             <p className="mt-1.5 text-sm/6 text-pretty text-muted sm:text-base/7">
-              AI SEO, also known as GEO (generative engine optimization), is a
-              new and rapidly evolving discipline. The signals that move
-              visibility in ChatGPT, Claude, and Perplexity shift as providers
-              update their crawlers, training data, and retrieval. Treat this
-              report as a directional snapshot, not a fixed checklist.
+              AEO (answer engine optimization), also called GEO or AI SEO, is
+              new and changes fast. ChatGPT, Claude, Perplexity and Google AI
+              Overviews update their crawlers and retrieval often. Treat this
+              score as a directional snapshot, not a guarantee of citations.
             </p>
           </div>
         </div>
