@@ -52,6 +52,19 @@ describe("A13 AI crawler access", () => {
     expect(statusOf(run({ robotsTxt: robots }), "A13")).toBe("fail");
   });
 
+  // RFC 9309 and Google: a 5xx (or 429) robots.txt means "disallow all".
+  it.each([500, 503, 429])("fails when robots.txt returns HTTP %i", (status) => {
+    const audit = run({ robotsTxt: null, robotsTxtStatus: status });
+    expect(statusOf(audit, "A13")).toBe("fail");
+    expect(evidenceOf(audit, "A13")).toBe(
+      `robots.txt returned HTTP ${status}. Crawlers treat a server error on robots.txt as "disallow all" (RFC 9309; Google does the same), so AI crawlers are blocked until it returns 200 or 404.`,
+    );
+  });
+
+  it("still passes when robots.txt is a 404", () => {
+    expect(statusOf(run({ robotsTxt: null, robotsTxtStatus: 404 }), "A13")).toBe("pass");
+  });
+
   it("fails when everything is blocked", () => {
     expect(statusOf(run({ robotsTxt: "User-agent: *\nDisallow: /\n" }), "A13")).toBe("fail");
   });
@@ -69,6 +82,14 @@ describe("A14 llms.txt", () => {
   it("is partial for plain text without a heading", () => {
     const llmsTxt = { status: 200, contentType: "text/plain", body: "acme widgets" };
     expect(statusOf(run({ llmsTxt }), "A14")).toBe("partial");
+  });
+
+  it("fails for an empty file", () => {
+    const llmsTxt = { status: 200, contentType: "text/plain", body: " \n " };
+    const audit = run({ llmsTxt });
+    expect(statusOf(audit, "A14")).toBe("fail");
+    expect(evidenceOf(audit, "A14")).toBe("/llms.txt exists but is empty.");
+    expect(audit.diagnostics.llmsTxt).toBe("missing");
   });
 
   it("fails for an HTML catch-all page", () => {
@@ -90,6 +111,27 @@ describe("A15 redirects", () => {
 
   it("is partial for redirect chains", () => {
     expect(statusOf(run({ redirects: 3 }), "A15")).toBe("partial");
+  });
+});
+
+describe("A1 HTTPS", () => {
+  it("describes the audited page after redirects", () => {
+    expect(evidenceOf(run(), "A1")).toBe("The audited page (after redirects) uses HTTPS.");
+    expect(evidenceOf(run({ url: "http://acme.com/x" }), "A1")).toBe(
+      "The audited page (after redirects) is not served over HTTPS.",
+    );
+  });
+});
+
+describe("D12 brand consistency", () => {
+  it("reports whether the brand appears, not whether the tag exists", () => {
+    const html = withHead(
+      '<title>Widgets for everyone</title><meta name="description" content="Acme makes widgets for teams.">',
+      "<p>Acme widgets.</p>",
+    );
+    expect(evidenceOf(run({ html }), "D12")).toBe(
+      'Brand token "acme" appears in title: no, meta description: yes, body mentions: 1.',
+    );
   });
 });
 

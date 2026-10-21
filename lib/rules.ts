@@ -18,7 +18,12 @@ import robotsParser from "robots-parser";
 
 import type { AuditStatus } from "@/lib/audit-types";
 import type { PageSpeedResult } from "@/lib/pagespeed";
-import { isRealLlmsTxt, type LlmsTxtInfo, type SitemapInfo } from "@/lib/site-files";
+import {
+  isRealLlmsTxt,
+  isRobotsServerError,
+  type LlmsTxtInfo,
+  type SitemapInfo,
+} from "@/lib/site-files";
 
 export type RuleDependency =
   | "url"
@@ -119,6 +124,8 @@ export type RuleContext = {
 
   /** Site files from the page origin. null/false when missing. */
   robotsTxt: string | null;
+  /** HTTP status of /robots.txt; null when it could not be fetched. */
+  robotsTxtStatus: number | null;
   llmsTxt: LlmsTxtInfo;
   sitemap: SitemapInfo;
 
@@ -266,8 +273,8 @@ export const RULES: Rule[] = [
       status: ctx.url.protocol === "https:" ? "pass" : "fail",
       evidence:
         ctx.url.protocol === "https:"
-          ? "The submitted URL uses HTTPS."
-          : "The submitted URL is not HTTPS.",
+          ? "The audited page (after redirects) uses HTTPS."
+          : "The audited page (after redirects) is not served over HTTPS.",
     }),
   },
   {
@@ -331,6 +338,12 @@ export const RULES: Rule[] = [
     dependencies: ["robots-txt", "url"],
     multiplier: 2,
     evaluate: (ctx) => {
+      if (ctx.robotsTxt === null && isRobotsServerError(ctx.robotsTxtStatus)) {
+        return {
+          status: "fail",
+          evidence: `robots.txt returned HTTP ${ctx.robotsTxtStatus}. Crawlers treat a server error on robots.txt as "disallow all" (RFC 9309; Google does the same), so AI crawlers are blocked until it returns 200 or 404.`,
+        };
+      }
       if (ctx.robotsTxt === null) {
         return {
           status: "pass",
@@ -379,6 +392,9 @@ export const RULES: Rule[] = [
           status: "fail",
           evidence: `No /llms.txt file was found${file ? ` (HTTP ${file.status})` : ""}.`,
         };
+      }
+      if (!file.body.trim()) {
+        return { status: "fail", evidence: "/llms.txt exists but is empty." };
       }
       if (!isRealLlmsTxt(file)) {
         return {
@@ -894,7 +910,7 @@ export const RULES: Rule[] = [
             : "fail";
       return {
         status,
-        evidence: `Brand token "${brand}" appears in title: ${ctx.title ? "yes" : "no"}, meta description: ${ctx.description ? "yes" : "no"}, body mentions: ${bodyMentions}.`,
+        evidence: `Brand token "${brand}" appears in title: ${yesNo(titleHasBrand)}, meta description: ${yesNo(descHasBrand)}, body mentions: ${bodyMentions}.`,
       };
     },
   },

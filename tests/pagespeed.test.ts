@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   fetchPageSpeed,
@@ -38,8 +38,15 @@ describe("parsePageSpeed", () => {
 });
 
 describe("fetchPageSpeed", () => {
+  let warn: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
+    warn.mockRestore();
   });
 
   const okJson = {
@@ -80,6 +87,32 @@ describe("fetchPageSpeed", () => {
     stubFetch(() => new Response("{}", { status: 429 }));
 
     await expect(fetchPageSpeed("https://a.com/x")).resolves.toBeNull();
+  });
+
+  it("logs the HTTP status of a failed request, never the key", async () => {
+    stubFetch(() => new Response("{}", { status: 429 }));
+
+    await fetchPageSpeed("https://a.com/x", "secret-key-123");
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const logged = warn.mock.calls.flat().map(String).join(" ");
+    expect(logged).toContain("HTTP 429");
+    expect(logged).not.toContain("secret-key-123");
+  });
+
+  it("logs a thrown request by error name, never the key", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new DOMException("The operation timed out.", "TimeoutError");
+      }),
+    );
+
+    await fetchPageSpeed("https://a.com/x?key=secret-key-123", "secret-key-123");
+
+    const logged = warn.mock.calls.flat().map(String).join(" ");
+    expect(logged).toContain("TimeoutError");
+    expect(logged).not.toContain("secret-key-123");
   });
 
   it("returns null when the request throws", async () => {

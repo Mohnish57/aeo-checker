@@ -59,7 +59,8 @@ export type AuditResult = {
     httpStatus: number;
     redirects: number;
     markdownExtract: "ready" | "empty";
-    robotsTxt: "found" | "missing";
+    /** "error": robots.txt returned 5xx/429, which crawlers read as disallow-all. */
+    robotsTxt: "found" | "missing" | "error";
     llmsTxt: "found" | "missing";
     sitemap: "found" | "missing";
     pageSpeed: "ready" | "unavailable";

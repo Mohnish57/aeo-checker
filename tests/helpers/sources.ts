@@ -25,6 +25,8 @@ type Overrides = {
   status?: number;
   redirects?: number;
   robotsTxt?: string | null;
+  /** HTTP status of /robots.txt; defaults to 200, or 404 when robotsTxt is null. */
+  robotsTxtStatus?: number | null;
   llmsTxt?: LlmsTxtInfo;
   sitemap?: Partial<SitemapInfo>;
   pageSpeed?: PageSpeedResult | null;
@@ -46,6 +48,12 @@ export function makeSources(overrides: Overrides = {}): PageSources {
         overrides.robotsTxt === undefined
           ? "User-agent: *\nAllow: /\nSitemap: https://acme.com/sitemap.xml\n"
           : overrides.robotsTxt,
+      robotsTxtStatus:
+        overrides.robotsTxtStatus !== undefined
+          ? overrides.robotsTxtStatus
+          : overrides.robotsTxt === null
+            ? 404
+            : 200,
       llmsTxt:
         overrides.llmsTxt === undefined
           ? { status: 200, contentType: "text/plain", body: "# Acme\n\n> Widgets.\n" }

@@ -19,6 +19,8 @@ export type SitemapInfo = {
 
 export type SiteFiles = {
   robotsTxt: string | null;
+  /** HTTP status of /robots.txt; null when it could not be fetched at all. */
+  robotsTxtStatus: number | null;
   llmsTxt: LlmsTxtInfo;
   sitemap: SitemapInfo;
 };
@@ -49,7 +51,12 @@ export async function fetchSiteFiles(pageUrl: URL): Promise<SiteFiles> {
       }
     : null;
 
-  return { robotsTxt, llmsTxt, sitemap: await findSitemap(origin, robotsTxt) };
+  return {
+    robotsTxt,
+    robotsTxtStatus: robots?.status ?? null,
+    llmsTxt,
+    sitemap: await findSitemap(origin, robotsTxt),
+  };
 }
 
 export function parseSitemapDirectives(robotsTxt: string): string[] {
@@ -73,9 +80,17 @@ export function looksLikeHtml(file: {
   );
 }
 
-/** True for a real llms.txt: a 200 response that is not an HTML catch-all page. */
+/** True for a real llms.txt: a non-empty 200 response that is not an HTML catch-all page. */
 export function isRealLlmsTxt(file: LlmsTxtInfo): file is NonNullable<LlmsTxtInfo> {
-  return !!file && file.status === 200 && !looksLikeHtml(file);
+  return !!file && file.status === 200 && !!file.body.trim() && !looksLikeHtml(file);
+}
+
+/**
+ * RFC 9309: a robots.txt that fails with a server error means "disallow
+ * all". Google applies the same rule and treats 429 like a 5xx.
+ */
+export function isRobotsServerError(status: number | null): boolean {
+  return status !== null && (status === 429 || status >= 500);
 }
 
 const DEFAULT_SITEMAP_PATHS = ["/sitemap.xml", "/sitemap_index.xml"];

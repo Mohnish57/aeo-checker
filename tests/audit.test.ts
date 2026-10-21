@@ -90,6 +90,11 @@ describe("auditFromSources", () => {
 });
 
 describe("robots.txt diagnostics", () => {
+  it("reports a 5xx robots.txt as an error", () => {
+    const result = auditFromSources(makeSources({ robotsTxt: null, robotsTxtStatus: 503 }));
+    expect(result.diagnostics.robotsTxt).toBe("error");
+  });
+
   it("reports an empty robots.txt as found", () => {
     const result = auditFromSources(makeSources({ robotsTxt: "" }));
     expect(result.diagnostics.robotsTxt).toBe("found");

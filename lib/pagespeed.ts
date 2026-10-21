@@ -34,9 +34,18 @@ export async function fetchPageSpeed(
       signal: AbortSignal.timeout(timeoutMs),
       cache: "no-store",
     });
-    if (!response.ok) return null;
-    return parsePageSpeed(await response.json());
-  } catch {
+    if (!response.ok) {
+      // Status only: the request URL carries the API key.
+      console.warn(`PageSpeed Insights request failed: HTTP ${response.status}`);
+      return null;
+    }
+    const result = parsePageSpeed(await response.json());
+    if (!result) console.warn("PageSpeed Insights returned no performance score");
+    return result;
+  } catch (error) {
+    // Error name only (e.g. TimeoutError); never the message or URL.
+    const name = error instanceof Error ? error.name : "unknown error";
+    console.warn(`PageSpeed Insights request failed: ${name}`);
     return null;
   }
 }

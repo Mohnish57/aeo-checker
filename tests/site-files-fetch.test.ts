@@ -67,9 +67,19 @@ describe("fetchSiteFiles", () => {
 
     await expect(fetchSiteFiles(page)).resolves.toEqual({
       robotsTxt: null,
+      robotsTxtStatus: null,
       llmsTxt: null,
       sitemap: { declared: false, url: "https://a.com/sitemap.xml", found: false },
     });
+  });
+
+  it("keeps the robots.txt status so a server error can be told apart from a 404", async () => {
+    serve({ "https://a.com/robots.txt": { status: 503, body: "busy" } });
+
+    const files = await fetchSiteFiles(page);
+
+    expect(files.robotsTxt).toBeNull();
+    expect(files.robotsTxtStatus).toBe(503);
   });
 
   it("reports a declared absolute sitemap that returns urlset", async () => {

@@ -41,7 +41,12 @@ import {
   type RuleEvaluation,
   type SchemaSummary,
 } from "@/lib/rules";
-import { fetchSiteFiles, isRealLlmsTxt, type SiteFiles } from "@/lib/site-files";
+import {
+  fetchSiteFiles,
+  isRealLlmsTxt,
+  isRobotsServerError,
+  type SiteFiles,
+} from "@/lib/site-files";
 import { displayHost } from "@/lib/url";
 
 const STATUS_VALUE: Record<AuditStatus, number> = {
@@ -138,7 +143,12 @@ export function auditFromSources(sources: PageSources): AuditResult {
       httpStatus: ctx.httpStatus,
       redirects: ctx.redirects,
       markdownExtract: ctx.markdown ? "ready" : "empty",
-      robotsTxt: ctx.robotsTxt !== null ? "found" : "missing",
+      robotsTxt:
+        ctx.robotsTxt !== null
+          ? "found"
+          : isRobotsServerError(ctx.robotsTxtStatus)
+            ? "error"
+            : "missing",
       llmsTxt: isRealLlmsTxt(ctx.llmsTxt) ? "found" : "missing",
       sitemap: ctx.sitemap.found ? "found" : "missing",
       pageSpeed: ctx.pageSpeed ? "ready" : "unavailable",
@@ -237,6 +247,7 @@ function buildContext(sources: PageSources): RuleContext {
     httpStatus: page.status,
     redirects: page.redirects,
     robotsTxt: site.robotsTxt,
+    robotsTxtStatus: site.robotsTxtStatus,
     llmsTxt: site.llmsTxt,
     sitemap: site.sitemap,
     pageSpeed,
