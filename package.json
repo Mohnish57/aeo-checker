@@ -1,7 +1,7 @@
 {
   "name": "ai-seo-audit",
   "version": "1.0.0",
-  "description": "A simple Context.dev-powered AI SEO readiness audit for any URL.",
+  "description": "Free AEO and SEO checker: score any URL for AI answer engines and search, with prioritized fixes.",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -13,20 +13,20 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/context-dot-dev/ai-seo-audit.git"
+    "url": "git+https://github.com/Mohnish57/aeo-checker-.git"
   },
   "keywords": [
     "ai-seo",
     "geo",
     "answer-engine-optimization",
-    "context.dev"
+    "aeo"
   ],
   "author": "",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/context-dot-dev/ai-seo-audit/issues"
+    "url": "https://github.com/Mohnish57/aeo-checker-/issues"
   },
-  "homepage": "https://github.com/context-dot-dev/ai-seo-audit#readme",
+  "homepage": "https://github.com/Mohnish57/aeo-checker-#readme",
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
     "ipaddr.js": "^2.5.0",

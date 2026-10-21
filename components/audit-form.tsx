@@ -7,7 +7,7 @@ import { ArrowRight, Loader2 } from "lucide-react";
 
 import { normalizeAuditUrl } from "@/lib/url";
 
-const EXAMPLES = ["context.dev", "mintlify.com", "gumroad.com"];
+const EXAMPLES = ["vercel.com", "mintlify.com", "gumroad.com"];
 
 type AuditFormProps = {
   initialDomain?: string;

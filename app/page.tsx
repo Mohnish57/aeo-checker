@@ -6,20 +6,21 @@ type HomeProps = {
   searchParams: Promise<{ domain?: string }>;
 };
 
+const pageTitle = "AEO Checker | Score your site for ChatGPT, Perplexity & Google";
+
 export const metadata: Metadata = {
   title: {
-    absolute:
-      "AI SEO Audit | Score any page for ChatGPT, Claude & Perplexity",
+    absolute: pageTitle,
   },
   description:
-    "Paste a URL and get a free 0–100 AI SEO score for ChatGPT, Claude, and Perplexity. Audits crawlability, schema, content chunking, and trust signals, then hands you a copy-paste fix prompt for your coding agent.",
+    "Paste a URL and get a free 0–100 AEO and SEO score. Checks AI crawler access, llms.txt, schema, content structure, classic SEO, and page speed, then gives you prioritized fixes.",
   alternates: {
     canonical: "/",
   },
   openGraph: {
     type: "website",
     url: "/",
-    title: "AI SEO Audit | Score any page for ChatGPT, Claude & Perplexity",
+    title: pageTitle,
     description:
       "Free 0–100 AI visibility score with a copy-paste fix prompt your coding agent can run.",
   },
@@ -31,10 +32,10 @@ const faqSchema = {
   mainEntity: [
     {
       "@type": "Question",
-      name: "What is an AI SEO audit?",
+      name: "What is an AEO audit?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "An AI SEO audit evaluates whether a web page is readable and citation-ready for AI answer engines like ChatGPT, Claude, and Perplexity. It scores crawlability for AI bots, semantic HTML and content chunking, structured data and schema markup, and trust signals such as author and date metadata.",
+        text: "An AEO audit evaluates whether a web page is readable and citation-ready for AI answer engines like ChatGPT, Claude, and Perplexity. It scores crawlability for AI bots, semantic HTML and content chunking, structured data and schema markup, and trust signals such as author and date metadata.",
       },
     },
     {
@@ -50,12 +51,12 @@ const faqSchema = {
       name: "Which AI-readability signals does this audit check?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "The audit analyzes the rendered HTML and Markdown of your page for AI-readability signals: HTTPS, canonical tags, noindex directives, heading hierarchy, paragraph chunking, JSON-LD structured data (Organization, Article, FAQPage, Person), E-E-A-T trust signals, and external citation presence. A dedicated crawler-access check for specific AI bot user agents is on the roadmap.",
+        text: "The checker reads your page the way AI crawlers do (raw HTML, no JavaScript) and checks robots.txt access for GPTBot, ClaudeBot, PerplexityBot and other AI bots, llms.txt, heading and paragraph structure, JSON-LD schema, E-E-A-T trust signals, title and meta tags, Open Graph tags, image alt text, sitemap, and mobile page speed from Google PageSpeed Insights.",
       },
     },
     {
       "@type": "Question",
-      name: "Is the AI SEO Audit free?",
+      name: "Is the AEO Checker free?",
       acceptedAnswer: {
         "@type": "Answer",
         text: "Yes. The tool is free, requires no signup, and is open source on GitHub. Paste a URL, get a 0–100 score in about 30 seconds, and copy a fix prompt into Claude Code, Cursor, or any coding agent.",
@@ -66,7 +67,7 @@ const faqSchema = {
       name: "How long does an audit take?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Most audits complete in roughly 30 seconds. The tool fetches your Markdown and raw HTML via context.dev, then scores 30+ checks across crawlability, content, schema, and trust signals.",
+        text: "Most audits complete in 20–40 seconds. The checker fetches your page and site files directly, runs Google PageSpeed Insights in parallel, and scores 45+ checks.",
       },
     },
   ],
@@ -77,7 +78,7 @@ const howToSchema = {
   "@type": "HowTo",
   name: "How to audit a page for AI SEO visibility",
   description:
-    "Run a free AI SEO audit and apply the fixes with your coding agent in three steps.",
+    "Run a free AEO and SEO audit and apply the fixes with your coding agent in three steps.",
   totalTime: "PT2M",
   step: [
     {
@@ -90,7 +91,7 @@ const howToSchema = {
       "@type": "HowToStep",
       position: 2,
       name: "Get a 0–100 score",
-      text: "The audit fetches the page, evaluates 30+ AI-readability rules, and returns a visibility score with a per-category breakdown.",
+      text: "The audit fetches the page, evaluates 45+ AEO and SEO checks, and returns a visibility score with a per-category breakdown.",
     },
     {
       "@type": "HowToStep",
@@ -133,15 +134,15 @@ export default async function Home({ searchParams }: HomeProps) {
             <span className="text-teal">Fix.</span>
           </h1>
           <p className="mt-6 max-w-xl text-lg/7 text-pretty text-muted sm:text-xl/8">
-            See your page through the eyes of ChatGPT, Claude, and Perplexity.
-            Get a 0–100 visibility score and a copy-paste prompt your coding
-            agent can run to fix what&rsquo;s broken.
+            See your site through the eyes of ChatGPT, Claude, Perplexity, and
+            Google. Get a 0–100 score and prioritized fixes, plus a prompt your
+            coding agent can run.
           </p>
           <ul className="mt-8 grid max-w-2xl gap-3 border-t hairline pt-5 text-base text-ink sm:grid-cols-3 sm:gap-6">
             {[
-              ["Free", "no signup, open source"],
+              ["Free", "no signup"],
               ["~30s", "paste a URL, get a score"],
-              ["Agent-ready", "copy/paste fix prompt"],
+              ["45+ checks", "AEO, SEO and speed"],
             ].map(([headline, sub]) => (
               <li key={headline} className="flex gap-3 sm:flex-col sm:gap-1">
                 <div className="font-mono text-sm font-medium tracking-wide text-teal sm:text-base">
