@@ -42,7 +42,7 @@ npm run dev
 
 ## Deploy
 
-Import the repo into Vercel, set `NEXT_PUBLIC_SITE_URL`, and `PAGESPEED_API_KEY` (recommended), deploy.
+Import the repo into Vercel, set `NEXT_PUBLIC_SITE_URL` and `PAGESPEED_API_KEY` (recommended), then deploy.
 
 ## License
 
