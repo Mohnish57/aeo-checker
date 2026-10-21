@@ -40,7 +40,7 @@ import {
   type RuleEvaluation,
   type SchemaSummary,
 } from "@/lib/rules";
-import { fetchSiteFiles, type SiteFiles } from "@/lib/site-files";
+import { fetchSiteFiles, looksLikeHtml, type SiteFiles } from "@/lib/site-files";
 import { displayHost } from "@/lib/url";
 
 const STATUS_VALUE: Record<AuditStatus, number> = {
@@ -137,10 +137,13 @@ export function auditFromSources(sources: PageSources): AuditResult {
       redirects: ctx.redirects,
       markdownExtract: ctx.markdown ? "ready" : "empty",
       robotsTxt: ctx.robotsTxt ? "found" : "missing",
-      llmsTxt: ctx.llmsTxt?.status === 200 ? "found" : "missing",
+      llmsTxt:
+        ctx.llmsTxt?.status === 200 && !looksLikeHtml(ctx.llmsTxt)
+          ? "found"
+          : "missing",
       sitemap: ctx.sitemap.found ? "found" : "missing",
       pageSpeed: ctx.pageSpeed ? "ready" : "unavailable",
-      pageSpeedReportUrl: pageSpeedReportUrl(sources.requestedUrl),
+      pageSpeedReportUrl: pageSpeedReportUrl(sources.page.finalUrl),
       jsonLdParseFailures: ctx.jsonLdParseFailures,
     },
   };

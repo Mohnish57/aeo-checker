@@ -19,6 +19,8 @@ export const GOOD_PAGESPEED: PageSpeedResult = {
 
 type Overrides = {
   url?: string;
+  /** Final URL after redirects; defaults to `url`. */
+  finalUrl?: string;
   html?: string;
   status?: number;
   redirects?: number;
@@ -33,7 +35,7 @@ export function makeSources(overrides: Overrides = {}): PageSources {
   return {
     requestedUrl: url,
     page: {
-      finalUrl: url,
+      finalUrl: overrides.finalUrl ?? url,
       status: overrides.status ?? 200,
       contentType: "text/html; charset=utf-8",
       body: overrides.html ?? ARTICLE_HTML,

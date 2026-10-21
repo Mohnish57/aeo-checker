@@ -41,6 +41,41 @@ describe("auditFromSources", () => {
     );
     expect(statusOf(http, "A1")).toBe("fail");
   });
+
+  it("judges HTTPS on the final URL, not the requested one", () => {
+    const upgraded = auditFromSources(
+      makeSources({
+        url: "http://acme.com/blog/what-is-a-widget/",
+        finalUrl: "https://acme.com/blog/what-is-a-widget/",
+      }),
+    );
+    expect(statusOf(upgraded, "A1")).toBe("pass");
+  });
+
+  it("builds the PageSpeed report link from the final URL", () => {
+    const upgraded = auditFromSources(
+      makeSources({
+        url: "http://acme.com/blog/what-is-a-widget/",
+        finalUrl: "https://acme.com/blog/what-is-a-widget/",
+      }),
+    );
+    expect(upgraded.diagnostics.pageSpeedReportUrl).toContain(
+      encodeURIComponent("https://acme.com/blog/what-is-a-widget/"),
+    );
+  });
+
+  it("reports an HTML llms.txt catch-all as missing in diagnostics", () => {
+    const html = auditFromSources(
+      makeSources({
+        llmsTxt: {
+          status: 200,
+          contentType: "text/html",
+          body: "<!doctype html><html>",
+        },
+      }),
+    );
+    expect(html.diagnostics.llmsTxt).toBe("missing");
+  });
 });
 
 describe("assertAuditablePage", () => {
