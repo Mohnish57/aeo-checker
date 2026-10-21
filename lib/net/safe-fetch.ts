@@ -4,11 +4,13 @@
  * - Only http(s) on ports 80/443.
  * - Every redirect hop is re-validated; DNS answers are checked both before
  *   the request and at connect time (guards against DNS rebinding).
- * - Hard timeout and body-size cap.
+ * - Hard timeout and body-size cap. DNS runs on c-ares (not the libuv
+ *   threadpool that dns.lookup uses) with its own deadline, and the
+ *   pre-request lookup is also cut off by the fetch timeout.
  *
  * FetchError messages are shown to users as-is.
  */
-import { lookup } from "node:dns/promises";
+import { Resolver } from "node:dns/promises";
 import { isIP, type LookupFunction } from "node:net";
 
 import ipaddr from "ipaddr.js";
@@ -62,17 +64,128 @@ export const USER_AGENT =
 const BLOCKED_ADDRESS_MESSAGE =
   "That address points to a private or internal network, so it can't be audited.";
 
-export function isPublicAddress(ip: string): boolean {
+/**
+ * ipaddr.js reads "::1.2.3.4" as "::ffff:1.2.3.4"; the WHATWG URL parser
+ * gives the canonical hex form ("::102:304") that sockets actually use.
+ */
+function canonicalIp(ip: string): string {
+  if (isIP(ip) !== 6) return ip;
+  try {
+    return new URL(`http://[${ip}]/`).hostname.slice(1, -1);
+  } catch {
+    return ip;
+  }
+}
+
+export function isPublicAddress(rawIp: string): boolean {
+  const ip = canonicalIp(rawIp);
   if (!ipaddr.isValid(ip)) return false;
   let addr = ipaddr.parse(ip);
   if (addr.kind() === "ipv6") {
     const v6 = addr as ipaddr.IPv6;
     if (v6.isIPv4MappedAddress()) addr = v6.toIPv4Address();
+    // ::/96 (deprecated IPv4-compatible, plus :: and ::1) is never public.
+    else if (v6.parts.slice(0, 6).every((part) => part === 0)) return false;
   }
   return addr.range() === "unicast";
 }
 
-export async function assertPublicHost(url: URL): Promise<void> {
+/** Per-query DNS deadline. c-ares enforces it; the race below backs it up. */
+const DNS_TIMEOUT_MS = 3_000;
+const resolver = new Resolver({ timeout: DNS_TIMEOUT_MS, tries: 1 });
+
+type ResolvedAddress = { address: string; family: 4 | 6 };
+
+function dnsTimeout(hostname: string): FetchError {
+  return new FetchError(
+    "timeout",
+    `Looking up ${hostname} took too long. Try again, or check the domain's DNS settings.`,
+  );
+}
+
+function isLocalhostName(hostname: string): boolean {
+  const name = hostname.replace(/\.$/, "").toLowerCase();
+  return name === "localhost" || name.endsWith(".localhost");
+}
+
+/** Rejects on the DNS deadline, or as soon as `signal` aborts. */
+function withDeadline<T>(
+  promise: Promise<T>,
+  hostname: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal?.reason ?? new Error("aborted"));
+    const timer = setTimeout(() => reject(dnsTimeout(hostname)), DNS_TIMEOUT_MS + 250);
+    const done = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    if (signal?.aborted) {
+      done();
+      onAbort();
+      return;
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        done();
+        resolve(value);
+      },
+      (error: unknown) => {
+        done();
+        reject(error);
+      },
+    );
+  });
+}
+
+/**
+ * A and AAAA records for `hostname`, all of which must be public.
+ * /etc/hosts is not consulted (c-ares), so localhost names are refused here.
+ */
+async function resolvePublic(
+  hostname: string,
+  signal?: AbortSignal,
+): Promise<ResolvedAddress[]> {
+  if (isLocalhostName(hostname)) {
+    throw new FetchError("blocked-address", BLOCKED_ADDRESS_MESSAGE);
+  }
+  const [v4, v6] = await withDeadline(
+    Promise.allSettled([resolver.resolve4(hostname), resolver.resolve6(hostname)]),
+    hostname,
+    signal,
+  );
+  const addresses: ResolvedAddress[] = [
+    ...(v4.status === "fulfilled" ? v4.value : []).map(
+      (address) => ({ address, family: 4 }) as const,
+    ),
+    ...(v6.status === "fulfilled" ? v6.value : []).map(
+      (address) => ({ address, family: 6 }) as const,
+    ),
+  ];
+  if (!addresses.length) {
+    const timedOut = [v4, v6].some(
+      (result) =>
+        result.status === "rejected" &&
+        (result.reason as { code?: string } | null)?.code === "ETIMEOUT",
+    );
+    if (timedOut) throw dnsTimeout(hostname);
+    throw new FetchError(
+      "unreachable",
+      `We couldn't find ${hostname}. Check the URL is spelled correctly.`,
+    );
+  }
+  if (addresses.some((a) => !isPublicAddress(a.address))) {
+    throw new FetchError("blocked-address", BLOCKED_ADDRESS_MESSAGE);
+  }
+  return addresses;
+}
+
+export async function assertPublicHost(
+  url: URL,
+  signal?: AbortSignal,
+): Promise<void> {
   const hostname = url.hostname.replace(/^\[|\]$/g, "");
   if (isIP(hostname)) {
     if (!isPublicAddress(hostname)) {
@@ -80,39 +193,23 @@ export async function assertPublicHost(url: URL): Promise<void> {
     }
     return;
   }
-  let addresses: { address: string }[];
-  try {
-    addresses = await lookup(hostname, { all: true });
-  } catch {
-    throw new FetchError(
-      "unreachable",
-      `We couldn't find ${hostname}. Check the URL is spelled correctly.`,
-    );
-  }
-  if (!addresses.length || addresses.some((a) => !isPublicAddress(a.address))) {
-    throw new FetchError("blocked-address", BLOCKED_ADDRESS_MESSAGE);
-  }
+  await resolvePublic(hostname, signal);
 }
 
 // Connect-time guard: re-checks the addresses the socket will actually use.
+// undici rejects the fetch on abort while this is pending, and the DNS
+// deadline bounds the lookup itself.
 function guardedLookup(
   hostname: string,
   options: { all?: boolean },
   callback: (
     error: Error | null,
-    address?: string | { address: string; family: number }[],
+    address?: string | ResolvedAddress[],
     family?: number,
   ) => void,
 ): void {
-  lookup(hostname, { all: true }).then(
+  resolvePublic(hostname).then(
     (addresses) => {
-      if (
-        !addresses.length ||
-        addresses.some((a) => !isPublicAddress(a.address))
-      ) {
-        callback(new FetchError("blocked-address", BLOCKED_ADDRESS_MESSAGE));
-        return;
-      }
       if (options.all) callback(null, addresses);
       else callback(null, addresses[0].address, addresses[0].family);
     },
@@ -163,7 +260,9 @@ export async function safeFetch(
   try {
     let current = parseHttpUrl(rawUrl, allowAnyPort);
     for (let redirects = 0; ; redirects++) {
-      if (!allowPrivateNetwork) await assertPublicHost(current);
+      if (!allowPrivateNetwork) {
+        await assertPublicHost(current, controller.signal);
+      }
 
       const response = await undiciFetch(current, {
         redirect: "manual",
