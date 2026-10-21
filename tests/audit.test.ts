@@ -129,3 +129,43 @@ describe("assertAuditablePage", () => {
     expect(() => assertAuditablePage(page(200))).not.toThrow();
   });
 });
+
+describe("adversarial HTML", () => {
+  // The page cap is 3 MB. Unclosed tags used to make the regex extractors
+  // quadratic, so one request could pin a CPU for minutes.
+  const PAGE_BYTES = 3_000_000;
+  const fill = (chunk: string) => chunk.repeat(Math.floor(PAGE_BYTES / chunk.length));
+
+  it.each([
+    ["<script ", ""],
+    ["<meta ", ""],
+    ["<h1>", ""], // 750k levels of nesting
+    ["<a ", ""],
+    ["<img ", ""],
+    ["<time ", ""],
+    ["<p>x</p>", ""], // 375k elements
+    ["<div></div>", "<div>".repeat(511)], // blank flood under deep nesting
+    ["<li>x", "<ol>"],
+    ["&#8211;", ""], // one text node per entity
+  ])(
+    "audits a 3 MB page of %j (prefix %j) in under 3 seconds",
+    (chunk, prefix) => {
+      const start = performance.now();
+      const result = auditFromSources(makeSources({ html: prefix + fill(chunk) }));
+      expect(result.score).toBeGreaterThanOrEqual(0);
+      expect(performance.now() - start).toBeLessThan(3000);
+    },
+    60_000,
+  );
+});
+
+describe("HTML entities", () => {
+  it("decodes numeric and named entities in the title and description", () => {
+    const html =
+      "<!doctype html><html><head><title>Widgets &#8211; Acme&nbsp;&amp;&#x20AC; Co</title>" +
+      '<meta name="description" content="Caf&eacute; &#8220;widgets&#8221;"></head><body><p>Hi</p></body></html>';
+    const result = auditFromSources(makeSources({ html }));
+    expect(result.title).toBe("Widgets – Acme &€ Co");
+    expect(result.description).toBe("Café “widgets”");
+  });
+});

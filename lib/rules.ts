@@ -427,7 +427,7 @@ export const RULES: Rule[] = [
           ctx.host.split(".")[0],
           ...(ctx.title ?? "")
             .split(/[\s|:.-]+/)
-            .filter((t) => t.length > 3)
+            .filter((t) => t.length > 3 && t.length <= 64)
             .slice(0, 4),
         ].filter(Boolean);
         const namesEntity = tokens.some((t) =>
@@ -545,7 +545,7 @@ export const RULES: Rule[] = [
       "Include at least one clearly attributed quote or sourced claim on long-form pages.",
     dependencies: ["markdown", "text"],
     evaluate: (ctx) => {
-      const blockquote = /(^|\n)\s*>/.test(ctx.markdown);
+      const blockquote = /^[ \t]*>/m.test(ctx.markdown);
       const accordingTo = /\baccording to\b/i.test(ctx.analysisText);
       const inlineQuote = /"[^"]{20,}"/.test(ctx.analysisText);
       const status: AuditStatus =
@@ -1213,10 +1213,18 @@ export const RULES: Rule[] = [
 // Helpers used by rule evaluators. Kept here so rules.ts is self-contained.
 // ---------------------------------------------------------------------------
 
+/** Above this, Intl.Segmenter takes seconds; the regex count is linear. */
+const SEGMENTER_MAX_CHARS = 200_000;
+
 export function countWords(text: string): number {
   // Intl.Segmenter provides CJK-aware word segmentation.
-  // Falls back to Latin regex when unavailable (Node < 16, some edge runtimes).
-  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+  // Falls back to Latin regex when unavailable (Node < 16, some edge runtimes)
+  // and for very long text.
+  if (
+    text.length <= SEGMENTER_MAX_CHARS &&
+    typeof Intl !== "undefined" &&
+    "Segmenter" in Intl
+  ) {
     try {
       const segmenter = new Intl.Segmenter(undefined, { granularity: "word" });
       let count = 0;

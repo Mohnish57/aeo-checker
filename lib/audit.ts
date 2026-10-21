@@ -19,6 +19,7 @@ import type {
   AuditResult,
   AuditStatus,
 } from "@/lib/audit-types";
+import { parsePage } from "@/lib/dom";
 import { htmlToMainMarkdown } from "@/lib/extract";
 import { FetchError, safeFetch, type FetchResult } from "@/lib/net/safe-fetch";
 import {
@@ -160,12 +161,18 @@ function buildContext(sources: PageSources): RuleContext {
   const host = displayHost(pageUrl);
 
   const html = page.body;
-  const markdown = htmlToMainMarkdown(html);
-  const htmlText = htmlToText(html);
+  // Parse once (depth-limited, see lib/dom.ts). Every extractor below reads
+  // this DOM; regexes over raw, attacker-chosen HTML were quadratic on
+  // unclosed tags.
+  const parsed = parsePage(html);
+  const { document } = parsed;
+  const metas = [...document.querySelectorAll("meta")];
+  const markdown = htmlToMainMarkdown(parsed.html, parsed);
+  const htmlText = nodeText(document);
   const analysisText = normalizeWhitespace(markdown || htmlText);
-  const title = extractTitle(html) ?? firstMarkdownHeading(markdown);
-  const description = extractMetaContent(html, "description");
-  const links = extractLinks(html, markdown, pageUrl);
+  const title = extractTitle(document) ?? firstMarkdownHeading(markdown);
+  const description = extractMetaContent(metas, "description");
+  const links = extractLinks(document, markdown, pageUrl);
   const externalLinks = links.filter(
     (link) => new URL(link).origin !== url.origin,
   );
@@ -176,15 +183,15 @@ function buildContext(sources: PageSources): RuleContext {
     schemas: jsonLd,
     blockCount: jsonLdBlockCount,
     parseFailures: jsonLdParseFailures,
-  } = extractJsonLd(html);
+  } = extractJsonLd(document);
   const schema = summarizeSchema(jsonLd);
-  const headings = extractHeadings(html, markdown);
+  const headings = extractHeadings(document, markdown);
   const h1Count = Math.max(
-    countMatches(html, /<h1\b/gi),
+    document.querySelectorAll("h1").length,
     headings.filter((h) => h.level === 1).length,
   );
   const h2Count = Math.max(
-    countMatches(html, /<h2\b/gi),
+    document.querySelectorAll("h2").length,
     headings.filter((h) => h.level === 2).length,
   );
   const paragraphs = extractParagraphs(markdown || htmlText);
@@ -192,9 +199,9 @@ function buildContext(sources: PageSources): RuleContext {
   const htmlWords = countWords(htmlText);
   const dataPoints = countDataPoints(analysisText);
   const grade = fleschKincaidGrade(analysisText);
-  const dateSignals = extractDateSignals(html, analysisText, jsonLd);
-  const canonical = extractCanonical(html);
-  const hasNoIndex = detectNoIndex(html);
+  const dateSignals = extractDateSignals(document, analysisText, jsonLd);
+  const canonical = extractCanonical(document);
+  const hasNoIndex = detectNoIndex(metas);
   const faqStatus = computeFaqStatus(analysisText, headings);
   const hasByline = detectByline(analysisText, schema);
 
@@ -233,15 +240,15 @@ function buildContext(sources: PageSources): RuleContext {
     llmsTxt: site.llmsTxt,
     sitemap: site.sitemap,
     pageSpeed,
-    htmlLang: extractHtmlLang(html),
-    viewport: extractMetaContent(html, "viewport"),
+    htmlLang: extractHtmlLang(document),
+    viewport: extractMetaContent(metas, "viewport"),
     openGraph: {
-      title: !!extractMetaContent(html, "og:title"),
-      description: !!extractMetaContent(html, "og:description"),
-      image: !!extractMetaContent(html, "og:image"),
+      title: !!extractMetaContent(metas, "og:title"),
+      description: !!extractMetaContent(metas, "og:description"),
+      image: !!extractMetaContent(metas, "og:image"),
     },
-    twitterCard: !!extractMetaContent(html, "twitter:card"),
-    images: countImages(html),
+    twitterCard: !!extractMetaContent(metas, "twitter:card"),
+    images: countImages(document),
   };
 }
 
@@ -383,9 +390,9 @@ function scoreBand(score: number): AuditBand {
 // expect. These are internal; rules only ever read from the RuleContext.
 // ---------------------------------------------------------------------------
 
-function extractTitle(html: string): string | null {
-  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  return match ? decodeHtml(normalizeWhitespace(match[1])) : null;
+function extractTitle(document: Document): string | null {
+  const title = document.querySelector("title");
+  return title ? normalizeWhitespace(title.textContent ?? "") : null;
 }
 
 function firstMarkdownHeading(markdown: string): string | null {
@@ -393,76 +400,59 @@ function firstMarkdownHeading(markdown: string): string | null {
   return match ? normalizeWhitespace(match[1]) : null;
 }
 
-function extractMetaContent(html: string, name: string): string | null {
-  const tags = html.match(/<meta\b[^>]*>/gi) ?? [];
-  for (const tag of tags) {
-    const tagName = getAttr(tag, "name") ?? getAttr(tag, "property");
-    if (tagName?.toLowerCase() === name.toLowerCase()) {
-      const content = getAttr(tag, "content");
-      if (content) return decodeHtml(content);
+function metaName(meta: Element): string | null {
+  return meta.getAttribute("name") ?? meta.getAttribute("property");
+}
+
+function extractMetaContent(metas: Element[], name: string): string | null {
+  for (const meta of metas) {
+    if (metaName(meta)?.toLowerCase() === name.toLowerCase()) {
+      const content = meta.getAttribute("content");
+      if (content) return content;
     }
   }
   return null;
 }
 
-function extractCanonical(html: string): string | null {
-  const tags = html.match(/<link\b[^>]*>/gi) ?? [];
-  for (const tag of tags) {
-    const rel = getAttr(tag, "rel");
-    if (rel?.toLowerCase().split(/\s+/).includes("canonical")) {
-      return getAttr(tag, "href");
+function extractCanonical(document: Document): string | null {
+  for (const link of document.querySelectorAll("link[rel]")) {
+    const rel = link.getAttribute("rel") ?? "";
+    if (rel.toLowerCase().split(/\s+/).includes("canonical")) {
+      return link.getAttribute("href");
     }
   }
   return null;
 }
 
-function detectNoIndex(html: string): boolean {
-  const tags = html.match(/<meta\b[^>]*>/gi) ?? [];
-  return tags.some((tag) => {
-    const name = getAttr(tag, "name") ?? getAttr(tag, "property");
-    const content = getAttr(tag, "content") ?? "";
-    return /robots|googlebot/i.test(name ?? "") && /\bnoindex\b/i.test(content);
+function detectNoIndex(metas: Element[]): boolean {
+  return metas.some((meta) => {
+    const name = metaName(meta) ?? "";
+    const content = meta.getAttribute("content") ?? "";
+    return /robots|googlebot/i.test(name) && /\bnoindex\b/i.test(content);
   });
 }
 
-function extractHtmlLang(html: string): string | null {
-  const tag = html.match(/<html\b[^>]*>/i)?.[0];
-  const lang = tag ? getAttr(tag, "lang") : null;
-  return lang?.trim() || null;
+function extractHtmlLang(document: Document): string | null {
+  return document.querySelector("html")?.getAttribute("lang")?.trim() || null;
 }
 
-function countImages(html: string): { total: number; withAlt: number } {
-  const tags = html.match(/<img\b[^>]*>/gi) ?? [];
+function countImages(document: Document): { total: number; withAlt: number } {
+  const images = [...document.querySelectorAll("img")];
   return {
-    total: tags.length,
+    total: images.length,
     // alt="" is a valid decorative-image marker, so presence is what counts.
-    withAlt: tags.filter((tag) => getAttr(tag, "alt") !== null).length,
+    withAlt: images.filter((img) => img.hasAttribute("alt")).length,
   };
 }
 
-function getAttr(tag: string, attr: string): string | null {
-  // Require attribute boundary (^ or whitespace) before the name so that e.g.
-  // `href` does NOT match `data-href`. Supports double-quoted, single-quoted,
-  // and unquoted attribute values.
-  const escaped = attr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(
-    `(?:^|\\s)${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`,
-    "i",
-  );
-  const match = tag.match(pattern);
-  if (!match) return null;
-  return decodeHtml(match[1] ?? match[2] ?? match[3] ?? "");
-}
-
 function extractLinks(
-  html: string,
+  document: Document,
   markdown: string,
   baseUrl: string,
 ): string[] {
   const raw = new Set<string>();
-  const anchorTags = html.match(/<a\b[^>]*>/gi) ?? [];
-  for (const tag of anchorTags) {
-    const href = getAttr(tag, "href");
+  for (const anchor of document.querySelectorAll("a[href]")) {
+    const href = anchor.getAttribute("href");
     if (href) raw.add(href);
   }
   for (const match of markdown.matchAll(
@@ -486,24 +476,23 @@ function extractLinks(
   return [...links];
 }
 
-function extractJsonLd(html: string): {
+function extractJsonLd(document: Document): {
   schemas: JsonObject[];
   blockCount: number;
   parseFailures: number;
 } {
-  // Match <script ... type=...application/ld+json...>...</script> permissively:
-  //   - allow whitespace around `=`
-  //   - allow single, double, or unquoted attribute values
-  //   - allow extra attributes before or after the type attribute
-  const pattern =
-    /<script\b[^>]*\btype\s*=\s*(?:"\s*application\/ld\+json\s*"|'\s*application\/ld\+json\s*'|application\/ld\+json)[^>]*>([\s\S]*?)<\/script>/gi;
-  const blocks = [...html.matchAll(pattern)];
+  // type="application/ld+json" in any quoting, case or surrounding whitespace.
+  const blocks = [...document.querySelectorAll("script[type]")].filter(
+    (script) =>
+      script.getAttribute("type")?.trim().toLowerCase() ===
+      "application/ld+json",
+  );
 
   const schemas: JsonObject[] = [];
   let parseFailures = 0;
 
   for (const block of blocks) {
-    const raw = stripScriptWrappers(block[1]).trim();
+    const raw = stripScriptWrappers(block.textContent ?? "").trim();
     if (!raw) continue;
     const parsed = tryParseJson(raw);
     if (parsed === undefined) {
@@ -618,11 +607,8 @@ function hasSchemaType(schema: JsonObject, types: string[]): boolean {
   );
 }
 
-function extractHeadings(html: string, markdown: string): Heading[] {
-  const headings: Heading[] = [];
-  for (const match of html.matchAll(/<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi)) {
-    headings.push({ level: Number(match[1]), text: htmlToText(match[2]) });
-  }
+function extractHeadings(document: Document, markdown: string): Heading[] {
+  const headings: Heading[] = [...domHeadings(document)];
   for (const match of markdown.matchAll(/^(#{1,6})\s+(.+)$/gm)) {
     headings.push({
       level: match[1].length,
@@ -662,12 +648,12 @@ function countDataPoints(text: string): number {
 }
 
 function extractDateSignals(
-  html: string,
+  document: Document,
   text: string,
   schemas: JsonObject[],
 ): DateSignals {
   const hasSchemaModified = schemas.some((s) => !!s.dateModified);
-  const hasTimeTag = /<time\b[^>]*(datetime=|>)/i.test(html);
+  const hasTimeTag = document.querySelector("time") !== null;
   const hasVisibleModified =
     /\b(updated|last updated|modified|last modified)\b.{0,40}\b(?:19|20)\d{2}\b/i.test(
       text,
@@ -708,30 +694,95 @@ function detectByline(text: string, schema: SchemaSummary): boolean {
   );
 }
 
-function htmlToText(html: string): string {
-  return normalizeWhitespace(
-    decodeHtml(
-      html
-        .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
-        .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
-        .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, " ")
-        .replace(/<[^>]+>/g, " "),
-    ),
-  );
+const NON_TEXT_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT"]);
+const HEADING_TAG = /^H([1-6])$/;
+
+/**
+ * <h1>-<h6> in document order with their text, in one pass. Text inside a
+ * nested heading belongs to the innermost one, so nested headings cost
+ * O(n) rather than re-walking each subtree.
+ */
+function domHeadings(document: Document): Heading[] {
+  const found: { level: number; parts: string[] }[] = [];
+  const stack: { node: Node; heading: number }[] = [{ node: document, heading: -1 }];
+  while (stack.length) {
+    const { node, heading } = stack.pop()!;
+    if (node.nodeType === 3) {
+      if (heading >= 0) found[heading].parts.push(node.nodeValue ?? "");
+      continue;
+    }
+    let current = heading;
+    if (node.nodeType === 1) {
+      const tag = (node as Element).tagName.toUpperCase();
+      if (NON_TEXT_TAGS.has(tag)) continue;
+      const level = HEADING_TAG.exec(tag)?.[1];
+      if (level) {
+        found.push({ level: Number(level), parts: [] });
+        current = found.length - 1;
+      }
+    } else if (node.nodeType !== 9 && node.nodeType !== 11) {
+      continue;
+    }
+    const children = node.childNodes;
+    for (let i = children.length - 1; i >= 0; i--) {
+      stack.push({ node: children[i], heading: current });
+    }
+  }
+  return found.map(({ level, parts }) => ({
+    level,
+    text: normalizeWhitespace(parts.join(" ")),
+  }));
+}
+
+/**
+ * Visible-ish text of a node: every text node outside script/style/noscript,
+ * space-separated. Iterative so deeply nested pages cannot overflow the stack.
+ */
+function nodeText(root: Node): string {
+  const parts: string[] = [];
+  const stack: Node[] = [root];
+  while (stack.length) {
+    const node = stack.pop()!;
+    if (node.nodeType === 3) {
+      parts.push(node.nodeValue ?? "");
+      continue;
+    }
+    if (node.nodeType === 1) {
+      if (NON_TEXT_TAGS.has((node as Element).tagName.toUpperCase())) continue;
+    } else if (node.nodeType !== 9 && node.nodeType !== 11) {
+      continue; // comments, doctype, processing instructions
+    }
+    const children = node.childNodes;
+    for (let i = children.length - 1; i >= 0; i--) stack.push(children[i]);
+  }
+  return normalizeWhitespace(parts.join(" "));
 }
 
 function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&",
+  apos: "'",
+  gt: ">",
+  lt: "<",
+  nbsp: " ",
+  quot: '"',
+};
+
+/** Only for JSON-LD that a publisher (incorrectly) HTML-encoded. */
 function decodeHtml(value: string): string {
-  return value
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
+  return value.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (entity, code: string) => {
+    if (code[0] === "#") {
+      const point =
+        code[1] === "x" || code[1] === "X"
+          ? parseInt(code.slice(2), 16)
+          : parseInt(code.slice(1), 10);
+      return point > 0 && point <= 0x10ffff ? String.fromCodePoint(point) : entity;
+    }
+    return NAMED_ENTITIES[code.toLowerCase()] ?? entity;
+  });
 }
 
 function fleschKincaidGrade(text: string): number | null {
