@@ -8,13 +8,17 @@
  *      documentation only; the evaluator receives the full `RuleContext`).
  *   4. Optionally set `multiplier` (defaults to 1) to weight the rule inside
  *      its category. A category's `maxScore` is split across every rule's
- *      multiplier. N/A results receive full credit for their share.
+ *      multiplier. N/A rules are excluded and their weight is redistributed
+ *      within the category; a category whose rules are all N/A gives its
+ *      weight to the other categories.
  *
  * Everything downstream (scoring, agent prompts, UI) derives from this file.
  */
+import robotsParser from "robots-parser";
+
 import type { AuditStatus } from "@/lib/audit-types";
 import type { PageSpeedResult } from "@/lib/pagespeed";
-import type { LlmsTxtInfo, SitemapInfo } from "@/lib/site-files";
+import { looksLikeHtml, type LlmsTxtInfo, type SitemapInfo } from "@/lib/site-files";
 
 export type RuleDependency =
   | "url"
@@ -154,7 +158,7 @@ export type CategoryDef = {
 };
 
 // ---------------------------------------------------------------------------
-// Categories: total maxScore should add to 100.
+// Categories: total maxScore must add to 100.
 // ---------------------------------------------------------------------------
 
 export const CATEGORIES: CategoryDef[] = [
@@ -163,41 +167,87 @@ export const CATEGORIES: CategoryDef[] = [
     name: "Technical AI Crawlability",
     description:
       "Can AI retrieval crawlers fetch and parse the page without JavaScript?",
-    maxScore: 28.4,
+    maxScore: 24,
   },
   {
     id: "B",
     name: "Content Structure & Chunking",
     description: "Can answer engines extract self-contained, quotable passages?",
-    maxScore: 25.4,
+    maxScore: 22,
   },
   {
     id: "C",
     name: "Structured Data / Schema",
     description:
       "Does the raw HTML expose machine-readable entities and page facts?",
-    maxScore: 13.4,
+    maxScore: 13,
   },
   {
     id: "D",
     name: "E-E-A-T & Entity Authority",
     description: "Does the page expose trust, authorship, and entity signals?",
-    maxScore: 21.4,
+    maxScore: 13,
   },
   {
     id: "E",
     name: "Off-site / Citation Surface Presence",
     description:
       "Does the page connect the brand to surfaces AI engines often cite?",
-    maxScore: 8.4,
+    maxScore: 6,
   },
   {
     id: "F",
     name: "Measurement & Governance",
     description: "Are monitoring and refresh signals visible or inferable?",
-    maxScore: 3,
+    maxScore: 2,
+  },
+  {
+    id: "G",
+    name: "Classic SEO",
+    description:
+      "Do title, description, social tags, images, and sitemap meet search-engine basics?",
+    maxScore: 12,
+  },
+  {
+    id: "H",
+    name: "Performance",
+    description:
+      "Does the page load fast on mobile? Measured with Google PageSpeed Insights.",
+    maxScore: 8,
   },
 ];
+
+/** Bots that fetch pages live to answer or cite. Blocking them removes you from answers. */
+export const AI_SEARCH_CRAWLERS = [
+  "OAI-SearchBot",
+  "ChatGPT-User",
+  "Claude-SearchBot",
+  "Claude-User",
+  "PerplexityBot",
+  "Perplexity-User",
+] as const;
+
+/** Bots that collect training data. Blocking them is a legitimate trade-off. */
+export const AI_TRAINING_CRAWLERS = [
+  "GPTBot",
+  "ClaudeBot",
+  "Google-Extended",
+  "Applebot-Extended",
+  "CCBot",
+] as const;
+
+export function blockedAiCrawlers(
+  robotsTxt: string,
+  pageUrl: string,
+): { search: string[]; training: string[] } {
+  const robots = robotsParser(new URL("/robots.txt", pageUrl).toString(), robotsTxt);
+  const blocked = (bots: readonly string[]) =>
+    bots.filter((bot) => robots.isDisallowed(pageUrl, bot) === true);
+  return {
+    search: blocked(AI_SEARCH_CRAWLERS),
+    training: blocked(AI_TRAINING_CRAWLERS),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Rules: the authoritative list. Order within a category controls UI order.
@@ -270,6 +320,87 @@ export const RULES: Rule[] = [
       evidence: ctx.hasNoIndex
         ? "A robots noindex directive appears in the page HTML."
         : "No robots noindex directive was detected in the raw HTML.",
+    }),
+  },
+  {
+    id: "A13",
+    categoryId: "A",
+    label: "AI answer and search crawlers are allowed by robots.txt.",
+    recommendation:
+      "Allow OAI-SearchBot, ChatGPT-User, Claude-SearchBot, Claude-User, PerplexityBot, and Perplexity-User in robots.txt. Blocking training bots (GPTBot, ClaudeBot, Google-Extended) is optional, but blocking answer bots removes you from AI answers.",
+    dependencies: ["robots-txt", "url"],
+    multiplier: 2,
+    evaluate: (ctx) => {
+      if (!ctx.robotsTxt) {
+        return {
+          status: "pass",
+          evidence: "No robots.txt was found, so AI crawlers are not blocked.",
+        };
+      }
+      const { search, training } = blockedAiCrawlers(
+        ctx.robotsTxt,
+        ctx.url.toString(),
+      );
+      const status: AuditStatus = search.length
+        ? "fail"
+        : training.length
+          ? "partial"
+          : "pass";
+      const parts = [
+        search.length ? `answer/search bots blocked: ${search.join(", ")}` : "",
+        training.length ? `training bots blocked: ${training.join(", ")}` : "",
+      ].filter(Boolean);
+      return {
+        status,
+        evidence: parts.length
+          ? `For this URL, ${parts.join("; ")}.`
+          : `All ${AI_SEARCH_CRAWLERS.length + AI_TRAINING_CRAWLERS.length} AI crawlers checked are allowed for this URL.`,
+      };
+    },
+  },
+  {
+    id: "A14",
+    categoryId: "A",
+    label: "An llms.txt file guides AI engines to key content.",
+    recommendation:
+      "Publish /llms.txt: a Markdown file with an H1 site name, a one-line summary, and links to your most important pages.",
+    dependencies: ["llms-txt"],
+    multiplier: 0.5,
+    evaluate: (ctx) => {
+      const file = ctx.llmsTxt;
+      if (!file || file.status !== 200) {
+        return {
+          status: "fail",
+          evidence: `No /llms.txt file was found${file ? ` (HTTP ${file.status})` : ""}.`,
+        };
+      }
+      if (looksLikeHtml(file)) {
+        return {
+          status: "fail",
+          evidence:
+            "/llms.txt returned an HTML page (likely a catch-all route), not a real llms.txt file.",
+        };
+      }
+      const hasHeading = /^\s*#\s+\S/m.test(file.body);
+      return {
+        status: hasHeading ? "pass" : "partial",
+        evidence: hasHeading
+          ? "/llms.txt exists and starts with a Markdown heading."
+          : "/llms.txt exists but has no Markdown H1 heading.",
+      };
+    },
+  },
+  {
+    id: "A15",
+    categoryId: "A",
+    label: "The page is reached without a redirect chain.",
+    recommendation:
+      "Link and canonicalize to the final URL so crawlers reach it in at most one redirect.",
+    dependencies: ["http"],
+    multiplier: 0.5,
+    evaluate: (ctx) => ({
+      status: ctx.redirects <= 1 && ctx.httpStatus === 200 ? "pass" : "partial",
+      evidence: `HTTP ${ctx.httpStatus} after ${ctx.redirects} redirect(s).`,
     }),
   },
 
@@ -891,6 +1022,185 @@ export const RULES: Rule[] = [
       };
     },
   },
+
+  // ----- G. Classic SEO ---------------------------------------------------
+  {
+    id: "G1",
+    categoryId: "G",
+    label: "Title tag is 30–60 characters.",
+    recommendation:
+      "Write a unique 30–60 character title that leads with the topic and includes the brand.",
+    dependencies: ["title"],
+    evaluate: (ctx) => {
+      const length = ctx.title?.length ?? 0;
+      return {
+        status: rangeStatus(length, [30, 60], [10, 70]),
+        evidence: ctx.title
+          ? `Title is ${length} characters: "${clip(ctx.title, 90)}".`
+          : "No <title> tag was found.",
+      };
+    },
+  },
+  {
+    id: "G2",
+    categoryId: "G",
+    label: "Meta description is 70–160 characters.",
+    recommendation:
+      "Write a 70–160 character meta description that answers what the page offers.",
+    dependencies: ["description"],
+    evaluate: (ctx) => {
+      const length = ctx.description?.length ?? 0;
+      return {
+        status: rangeStatus(length, [70, 160], [1, 200]),
+        evidence: ctx.description
+          ? `Meta description is ${length} characters.`
+          : "No meta description was found.",
+      };
+    },
+  },
+  {
+    id: "G3",
+    categoryId: "G",
+    label: "Images have alt text.",
+    recommendation:
+      'Add descriptive alt text to meaningful images, and alt="" to decorative ones.',
+    dependencies: ["images"],
+    evaluate: (ctx) => {
+      const { total, withAlt } = ctx.images;
+      if (total === 0) {
+        return { status: "na", evidence: "No <img> tags were found." };
+      }
+      const ratio = withAlt / total;
+      return {
+        status: ratio >= 0.9 ? "pass" : ratio >= 0.5 ? "partial" : "fail",
+        evidence: `${withAlt} of ${total} image(s) have an alt attribute.`,
+      };
+    },
+  },
+  {
+    id: "G4",
+    categoryId: "G",
+    label: "Open Graph and Twitter card tags are present.",
+    recommendation:
+      "Add og:title, og:description, og:image, and twitter:card so shared links render rich previews.",
+    dependencies: ["meta"],
+    evaluate: (ctx) => {
+      const og = ctx.openGraph;
+      const present = [og.title, og.description, og.image].filter(Boolean).length;
+      const status: AuditStatus =
+        present === 3 ? "pass" : present > 0 || ctx.twitterCard ? "partial" : "fail";
+      return {
+        status,
+        evidence: `og:title ${yesNo(og.title)}, og:description ${yesNo(og.description)}, og:image ${yesNo(og.image)}, twitter:card ${yesNo(ctx.twitterCard)}.`,
+      };
+    },
+  },
+  {
+    id: "G5",
+    categoryId: "G",
+    label: "Mobile viewport is configured.",
+    recommendation:
+      'Add <meta name="viewport" content="width=device-width, initial-scale=1">.',
+    dependencies: ["meta"],
+    evaluate: (ctx) => ({
+      status: !ctx.viewport
+        ? "fail"
+        : /width\s*=\s*device-width/i.test(ctx.viewport)
+          ? "pass"
+          : "partial",
+      evidence: ctx.viewport
+        ? `Viewport: "${ctx.viewport}".`
+        : "No viewport meta tag was found.",
+    }),
+  },
+  {
+    id: "G6",
+    categoryId: "G",
+    label: "Page language is declared.",
+    recommendation: 'Set the page language, e.g. <html lang="en">.',
+    dependencies: ["html"],
+    evaluate: (ctx) => ({
+      status: ctx.htmlLang ? "pass" : "fail",
+      evidence: ctx.htmlLang
+        ? `<html lang="${ctx.htmlLang}">.`
+        : "The <html> tag has no lang attribute.",
+    }),
+  },
+  {
+    id: "G7",
+    categoryId: "G",
+    label: "An XML sitemap is discoverable.",
+    recommendation:
+      "Publish /sitemap.xml and declare it in robots.txt with a Sitemap: line.",
+    dependencies: ["sitemap", "robots-txt"],
+    evaluate: (ctx) => ({
+      status: ctx.sitemap.found
+        ? "pass"
+        : ctx.sitemap.declared
+          ? "partial"
+          : "fail",
+      evidence: ctx.sitemap.found
+        ? `Sitemap found at ${ctx.sitemap.url}.`
+        : ctx.sitemap.declared
+          ? `robots.txt declares ${ctx.sitemap.url}, but it could not be fetched as XML.`
+          : "No sitemap was declared in robots.txt or found at /sitemap.xml.",
+    }),
+  },
+
+  // ----- H. Performance (PageSpeed Insights, mobile) ----------------------
+  {
+    id: "H1",
+    categoryId: "H",
+    label: "Lighthouse mobile performance score is 90+.",
+    recommendation:
+      "Open the PageSpeed Insights report and fix its top opportunities: image sizes, render-blocking scripts, and unused JavaScript.",
+    dependencies: ["pagespeed"],
+    multiplier: 2,
+    evaluate: (ctx) =>
+      metricRule(ctx.pageSpeed?.performanceScore ?? null, (score) => ({
+        status: score >= 90 ? "pass" : score >= 50 ? "partial" : "fail",
+        evidence: `Mobile performance score is ${score}/100.`,
+      })),
+  },
+  {
+    id: "H2",
+    categoryId: "H",
+    label: "Largest Contentful Paint is under 2.5s.",
+    recommendation:
+      "Serve the hero image or headline fast: preload it, compress it, and avoid client-side rendering for above-the-fold content.",
+    dependencies: ["pagespeed"],
+    evaluate: (ctx) =>
+      metricRule(ctx.pageSpeed?.lcpMs ?? null, (ms) => ({
+        status: lowerIsBetter(ms, 2500, 4000),
+        evidence: `Largest Contentful Paint is ${(ms / 1000).toFixed(1)}s.`,
+      })),
+  },
+  {
+    id: "H3",
+    categoryId: "H",
+    label: "Cumulative Layout Shift is under 0.1.",
+    recommendation:
+      "Reserve space for images, ads, and embeds with explicit width/height so content does not jump.",
+    dependencies: ["pagespeed"],
+    evaluate: (ctx) =>
+      metricRule(ctx.pageSpeed?.cls ?? null, (cls) => ({
+        status: lowerIsBetter(cls, 0.1, 0.25),
+        evidence: `Cumulative Layout Shift is ${cls.toFixed(2)}.`,
+      })),
+  },
+  {
+    id: "H4",
+    categoryId: "H",
+    label: "Total Blocking Time is under 200ms.",
+    recommendation:
+      "Cut main-thread JavaScript: defer third-party scripts, split bundles, and remove unused code.",
+    dependencies: ["pagespeed"],
+    evaluate: (ctx) =>
+      metricRule(ctx.pageSpeed?.tbtMs ?? null, (ms) => ({
+        status: lowerIsBetter(ms, 200, 600),
+        evidence: `Total Blocking Time is ${Math.round(ms)}ms.`,
+      })),
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -932,6 +1242,38 @@ export function escapeRegExp(value: string): string {
 
 function clip(value: string, max: number): string {
   return value.length <= max ? value : `${value.slice(0, max - 1)}...`;
+}
+
+function yesNo(value: boolean): string {
+  return value ? "yes" : "no";
+}
+
+/** pass inside `good`, partial inside `ok`, fail otherwise (inclusive). */
+function rangeStatus(
+  value: number,
+  good: [number, number],
+  ok: [number, number],
+): AuditStatus {
+  if (value >= good[0] && value <= good[1]) return "pass";
+  if (value >= ok[0] && value <= ok[1]) return "partial";
+  return "fail";
+}
+
+function lowerIsBetter(value: number, good: number, ok: number): AuditStatus {
+  return value <= good ? "pass" : value <= ok ? "partial" : "fail";
+}
+
+function metricRule(
+  value: number | null,
+  grade: (value: number) => RuleEvaluation,
+): RuleEvaluation {
+  return value === null
+    ? {
+        status: "na",
+        evidence:
+          "PageSpeed Insights was unavailable for this audit. Re-run the audit or open the report link in diagnostics.",
+      }
+    : grade(value);
 }
 
 function firstUsefulParagraph(paragraphs: string[]): string {
