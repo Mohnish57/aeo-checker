@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { assertAuditablePage, auditFromSources } from "@/lib/audit";
 import { FetchError } from "@/lib/net/safe-fetch";
 
-import { makeSources, statusOf } from "./helpers/sources";
+import { ARTICLE_HTML, makeSources, statusOf } from "./helpers/sources";
 
 describe("auditFromSources", () => {
   const audit = auditFromSources(makeSources());
@@ -86,6 +86,55 @@ describe("auditFromSources", () => {
       }),
     );
     expect(html.diagnostics.llmsTxt).toBe("missing");
+  });
+});
+
+describe("blocking issues cap the score", () => {
+  const blocksAnswerBots =
+    "User-agent: OAI-SearchBot\nDisallow: /\n\nUser-agent: PerplexityBot\nDisallow: /\n";
+
+  it("caps a page that blocks AI answer bots in the Critical band", () => {
+    const result = auditFromSources(makeSources({ robotsTxt: blocksAnswerBots }));
+    expect(result.score).toBeLessThanOrEqual(40);
+    expect(result.band.label).toBe("Critical");
+    expect(result.band.interpretation).toContain(
+      "robots.txt blocks one or more AI answer bots",
+    );
+  });
+
+  it("caps a page whose robots.txt returns a server error", () => {
+    const result = auditFromSources(makeSources({ robotsTxt: null, robotsTxtStatus: 503 }));
+    expect(result.score).toBeLessThanOrEqual(40);
+  });
+
+  it("caps a noindex page", () => {
+    const html = ARTICLE_HTML.replace(
+      "<head>",
+      '<head><meta name="robots" content="noindex">',
+    );
+    const result = auditFromSources(makeSources({ html }));
+    expect(result.score).toBeLessThanOrEqual(40);
+    expect(result.band.interpretation).toContain("noindex");
+  });
+
+  it("caps a client-rendered page with no content in the raw HTML", () => {
+    const head = ARTICLE_HTML.slice(0, ARTICLE_HTML.indexOf("</head>") + 7);
+    const html = `${head}<body><div id="root"></div><script src="/app.js"></script></body></html>`;
+    const result = auditFromSources(makeSources({ html }));
+    expect(result.score).toBeLessThanOrEqual(40);
+    expect(result.band.interpretation).toContain("needs JavaScript");
+  });
+
+  it("lists the blocking issue first in top priorities", () => {
+    const result = auditFromSources(makeSources({ robotsTxt: blocksAnswerBots }));
+    expect(result.topPriorities[0]).toMatch(/^A13:/);
+  });
+
+  it("does not cap a page that only blocks training bots", () => {
+    const result = auditFromSources(
+      makeSources({ robotsTxt: "User-agent: GPTBot\nDisallow: /\n" }),
+    );
+    expect(result.score).toBeGreaterThan(70);
   });
 });
 

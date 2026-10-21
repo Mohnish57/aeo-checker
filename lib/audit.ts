@@ -107,16 +107,36 @@ export function assertAuditablePage(page: FetchResult): void {
   }
 }
 
+/**
+ * Failing any of these keeps the page out of AI answers no matter how well
+ * the rest scores, so the total is capped in the Critical band.
+ */
+const BLOCKING_RULES: Record<string, string> = {
+  A8: "the main content needs JavaScript to appear, and AI crawlers usually don't run it",
+  A12: "a noindex directive keeps it out of the search indexes AI engines draw on",
+  A13: "robots.txt blocks one or more AI answer bots (see A13)",
+};
+const BLOCKED_SCORE_CAP = 40;
+
 export function auditFromSources(sources: PageSources): AuditResult {
   const ctx = buildContext(sources);
   const { categories, rawScore } = scoreCategories(ctx);
+  const items = categories.flatMap((c) => c.items);
+  const blockers = items.filter(
+    (item) => item.status === "fail" && item.id in BLOCKING_RULES,
+  );
 
   // Rounded once, from unrounded category totals, so it never exceeds 100.
-  const score = round1(Math.min(rawScore, 100));
-  const topPriorities = categories
-    .flatMap((c) => c.items)
-    .filter((item) => item.status === "fail" || item.status === "partial")
-    .sort((a, b) => b.maxScore - a.maxScore)
+  const score = round1(
+    Math.min(rawScore, blockers.length ? BLOCKED_SCORE_CAP : 100),
+  );
+  const topPriorities = [
+    ...blockers,
+    ...items
+      .filter((item) => item.status === "fail" || item.status === "partial")
+      .filter((item) => !blockers.includes(item))
+      .sort((a, b) => b.maxScore - a.maxScore),
+  ]
     .slice(0, 5)
     .map((item) => `${item.id}: ${item.recommendation}`);
 
@@ -127,7 +147,14 @@ export function auditFromSources(sources: PageSources): AuditResult {
     description: ctx.description,
     fetchedAt: new Date().toISOString(),
     score,
-    band: scoreBand(score),
+    band: blockers.length
+      ? {
+          label: "Critical",
+          interpretation: `This page is shut out of some or all AI answers: ${blockers
+            .map((item) => BLOCKING_RULES[item.id])
+            .join("; ")}. The score is capped at ${BLOCKED_SCORE_CAP} until this is fixed.`,
+        }
+      : scoreBand(score),
     topPriorities,
     stats: {
       markdownChars: ctx.markdown.length,
