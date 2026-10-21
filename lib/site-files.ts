@@ -73,29 +73,59 @@ export function looksLikeHtml(file: {
   );
 }
 
+const DEFAULT_SITEMAP_PATHS = ["/sitemap.xml", "/sitemap_index.xml"];
+
 async function findSitemap(
   origin: string,
   robotsTxt: string | null,
 ): Promise<SitemapInfo> {
-  const declaredUrls = robotsTxt ? parseSitemapDirectives(robotsTxt) : [];
-  const candidates = declaredUrls.length
-    ? declaredUrls.slice(0, 2)
-    : [`${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`];
+  const declaredRaw = robotsTxt ? parseSitemapDirectives(robotsTxt) : [];
+  const declared = declaredRaw.length > 0;
 
-  for (const url of candidates) {
-    const result = await tryFetch(url);
-    if (
-      result?.status === 200 &&
-      (isSitemapXml(result.body) || /\.gz$/i.test(url))
-    ) {
-      return { declared: declaredUrls.length > 0, url, found: true };
-    }
-  }
+  // Resolve relative Sitemap values; skip any that don't parse.
+  const declaredUrls = unique(
+    declaredRaw.flatMap((value) => {
+      try {
+        return [new URL(value, origin).toString()];
+      } catch {
+        return [];
+      }
+    }),
+  ).slice(0, 2);
+
+  const fallbackUrls = DEFAULT_SITEMAP_PATHS.map(
+    (path) => `${origin}${path}`,
+  ).filter((url) => !declaredUrls.includes(url));
+
+  const found =
+    (await firstFoundSitemap(declaredUrls)) ??
+    (await firstFoundSitemap(fallbackUrls));
+  if (found) return { declared, url: found, found: true };
+
   return {
-    declared: declaredUrls.length > 0,
-    url: candidates[0] ?? null,
+    declared,
+    url: declaredUrls[0] ?? `${origin}/sitemap.xml`,
     found: false,
   };
+}
+
+/** Fetch candidates in parallel; return the first found, in candidate order. */
+async function firstFoundSitemap(urls: string[]): Promise<string | null> {
+  const results = await Promise.all(urls.map((url) => tryFetch(url)));
+  const index = results.findIndex((result, i) =>
+    isFoundSitemap(urls[i], result),
+  );
+  return index === -1 ? null : urls[index];
+}
+
+function isFoundSitemap(url: string, result: FetchResult | null): boolean {
+  if (result?.status !== 200) return false;
+  if (/\.gz$/i.test(new URL(url).pathname)) return !looksLikeHtml(result);
+  return isSitemapXml(result.body);
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values)];
 }
 
 async function tryFetch(url: string): Promise<FetchResult | null> {
