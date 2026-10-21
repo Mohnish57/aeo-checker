@@ -5,23 +5,13 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2 } from "lucide-react";
 
-import { normalizeAuditUrl } from "@/lib/url";
+import { auditHref, normalizeAuditUrl } from "@/lib/url";
 
 const EXAMPLES = ["vercel.com", "mintlify.com", "gumroad.com"];
 
 type AuditFormProps = {
   initialDomain?: string;
 };
-
-function extractDomainLabel(value: string): string {
-  const url = normalizeAuditUrl(value);
-  if (!url) return value;
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return value;
-  }
-}
 
 export function AuditForm({ initialDomain = "" }: AuditFormProps) {
   const [value, setValue] = useState(initialDomain);
@@ -43,9 +33,7 @@ export function AuditForm({ initialDomain = "" }: AuditFormProps) {
     }
 
     setError("");
-    const domain = extractDomainLabel(auditUrl);
-    const query = `url=${encodeURIComponent(auditUrl)}`;
-    const href = `/audit/${encodeURIComponent(domain)}?${query}`;
+    const href = auditHref(auditUrl);
     startTransition(() => {
       router.push(href as never);
     });

@@ -5,6 +5,7 @@ import { AuditForm } from "@/components/audit-form";
 import { AuditResultsView } from "@/components/audit-results-view";
 import { auditPageSchemas, jsonLdScript } from "@/lib/json-ld";
 import { performAudit } from "@/lib/perform-audit";
+import { resolveAuditTarget } from "@/lib/url";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -14,7 +15,7 @@ const siteUrl =
 
 type PageProps = {
   params: Promise<{ domain: string }>;
-  searchParams: Promise<{ url?: string }>;
+  searchParams: Promise<{ url?: string | string[] }>;
 };
 
 function decodeDomain(raw: string): string {
@@ -23,17 +24,6 @@ function decodeDomain(raw: string): string {
   } catch {
     return raw;
   }
-}
-
-function resolveAuditUrl(domainParam: string, urlParam?: string): string {
-  if (urlParam) {
-    try {
-      return decodeURIComponent(urlParam);
-    } catch {
-      // fall through
-    }
-  }
-  return `https://${domainParam}/`;
 }
 
 export async function generateMetadata({
@@ -76,7 +66,7 @@ export default async function AuditPage({ params, searchParams }: PageProps) {
   const { domain } = await params;
   const { url: urlParam } = await searchParams;
   const decoded = decodeDomain(domain);
-  const auditTarget = resolveAuditUrl(decoded, urlParam);
+  const auditTarget = resolveAuditTarget(decoded, urlParam);
   const result = await performAudit(auditTarget);
 
   if (result.status === "error") {
