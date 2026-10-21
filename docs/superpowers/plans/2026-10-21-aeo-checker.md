@@ -2635,7 +2635,7 @@ Requires the user for authentication.
 git push -u origin main
 ```
 
-Expected: `main` pushed to `github.com/Mohnish57/aeo-checker-`.
+Expected: `main` pushed to `github.com/Mohnish57/aeo-checker`.
 
 - [ ] **Step 2: Vercel login** — ask the user to run `! vercel login` and confirm when done. Verify with `vercel whoami`.
 

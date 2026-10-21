@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-21
 **Status:** Approved in chat, pending spec review
-**Repo:** https://github.com/Mohnish57/aeo-checker-
+**Repo:** https://github.com/Mohnish57/aeo-checker
 **Base:** Fork of [context-dot-dev/ai-seo-audit](https://github.com/context-dot-dev/ai-seo-audit) (MIT)
 
 ## Goal
@@ -123,7 +123,7 @@ Keep the fork's home page and results layout. Changes: branding, new categories 
 
 ## Deployment
 
-1. Push to `github.com/Mohnish57/aeo-checker-` (`main`).
+1. Push to `github.com/Mohnish57/aeo-checker` (`main`).
 2. User runs `vercel login`; we run `vercel link` + `vercel --prod` (or connect the GitHub repo in Vercel for auto-deploys).
 3. Env vars: `NEXT_PUBLIC_SITE_URL` (Vercel URL), optional `PAGESPEED_API_KEY`.
 
