@@ -8,7 +8,8 @@ import { performAudit } from "@/lib/perform-audit";
 import { resolveAuditTarget } from "@/lib/url";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+// PageSpeed Insights can take 45 s; 60 s is the Vercel Hobby ceiling.
+export const maxDuration = 60;
 
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";

@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Free AEO and SEO checker: score any URL for AI answer engines and search, with prioritized fixes.",
   "private": true,
+  "engines": {
+    "node": ">=20.18.1"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

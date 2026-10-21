@@ -1,17 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import type { AuditApiResponse } from "@/lib/audit-types";
+import { auditCacheHeaders } from "@/lib/cache-headers";
 import { INVALID_DOMAIN_MESSAGE, performAudit } from "@/lib/perform-audit";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
-
-const CACHE_HEADERS = {
-  "Cache-Control": "public, max-age=900",
-  "CDN-Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400",
-  "Vercel-CDN-Cache-Control":
-    "public, s-maxage=86400, stale-while-revalidate=604800",
-};
+// PageSpeed Insights can take 45 s; 60 s is the Vercel Hobby ceiling.
+export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams;
@@ -36,7 +31,7 @@ async function respond(rawUrl: string) {
 
   if (result.status === "ready") {
     const payload: AuditApiResponse = { status: "ready", audit: result.audit };
-    return NextResponse.json(payload, { headers: CACHE_HEADERS });
+    return NextResponse.json(payload, { headers: auditCacheHeaders(result.audit) });
   }
 
   const status = result.message === INVALID_DOMAIN_MESSAGE ? 400 : 502;

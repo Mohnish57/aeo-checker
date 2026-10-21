@@ -15,19 +15,15 @@ const aiBots = [
   "Applebot-Extended",
 ];
 
+// Every /audit/* visit and /api/audit call runs a full live audit (target
+// fetches plus a PageSpeed Insights run), so crawlers stay off both.
+const disallow = ["/api/", "/audit/"];
+
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
-      ...aiBots.map((userAgent) => ({
-        userAgent,
-        allow: "/",
-        disallow: ["/api/"],
-      })),
-      {
-        userAgent: "*",
-        allow: "/",
-        disallow: ["/api/"],
-      },
+      ...aiBots.map((userAgent) => ({ userAgent, allow: "/", disallow })),
+      { userAgent: "*", allow: "/", disallow },
     ],
     sitemap: `${siteUrl}/sitemap.xml`,
     host: siteUrl,
