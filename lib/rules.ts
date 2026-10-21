@@ -18,7 +18,7 @@ import robotsParser from "robots-parser";
 
 import type { AuditStatus } from "@/lib/audit-types";
 import type { PageSpeedResult } from "@/lib/pagespeed";
-import { looksLikeHtml, type LlmsTxtInfo, type SitemapInfo } from "@/lib/site-files";
+import { isRealLlmsTxt, type LlmsTxtInfo, type SitemapInfo } from "@/lib/site-files";
 
 export type RuleDependency =
   | "url"
@@ -331,10 +331,16 @@ export const RULES: Rule[] = [
     dependencies: ["robots-txt", "url"],
     multiplier: 2,
     evaluate: (ctx) => {
-      if (!ctx.robotsTxt) {
+      if (ctx.robotsTxt === null) {
         return {
           status: "pass",
           evidence: "No robots.txt was found, so AI crawlers are not blocked.",
+        };
+      }
+      if (!ctx.robotsTxt.trim()) {
+        return {
+          status: "pass",
+          evidence: "robots.txt is empty, so AI crawlers are not blocked.",
         };
       }
       const { search, training } = blockedAiCrawlers(
@@ -374,7 +380,7 @@ export const RULES: Rule[] = [
           evidence: `No /llms.txt file was found${file ? ` (HTTP ${file.status})` : ""}.`,
         };
       }
-      if (looksLikeHtml(file)) {
+      if (!isRealLlmsTxt(file)) {
         return {
           status: "fail",
           evidence:
@@ -385,7 +391,7 @@ export const RULES: Rule[] = [
       return {
         status: hasHeading ? "pass" : "partial",
         evidence: hasHeading
-          ? "/llms.txt exists and starts with a Markdown heading."
+          ? "/llms.txt exists and has a Markdown H1 heading."
           : "/llms.txt exists but has no Markdown H1 heading.",
       };
     },
@@ -1157,7 +1163,7 @@ export const RULES: Rule[] = [
     dependencies: ["pagespeed"],
     multiplier: 2,
     evaluate: (ctx) =>
-      metricRule(ctx.pageSpeed?.performanceScore ?? null, (score) => ({
+      metricRule(ctx, "the performance score", ctx.pageSpeed?.performanceScore ?? null, (score) => ({
         status: score >= 90 ? "pass" : score >= 50 ? "partial" : "fail",
         evidence: `Mobile performance score is ${score}/100.`,
       })),
@@ -1170,9 +1176,9 @@ export const RULES: Rule[] = [
       "Serve the hero image or headline fast: preload it, compress it, and avoid client-side rendering for above-the-fold content.",
     dependencies: ["pagespeed"],
     evaluate: (ctx) =>
-      metricRule(ctx.pageSpeed?.lcpMs ?? null, (ms) => ({
+      metricRule(ctx, "Largest Contentful Paint", ctx.pageSpeed?.lcpMs ?? null, (ms) => ({
         status: lowerIsBetter(ms, 2500, 4000),
-        evidence: `Largest Contentful Paint is ${(ms / 1000).toFixed(1)}s.`,
+        evidence: `Largest Contentful Paint is ${(ms / 1000).toFixed(2)}s.`,
       })),
   },
   {
@@ -1183,9 +1189,9 @@ export const RULES: Rule[] = [
       "Reserve space for images, ads, and embeds with explicit width/height so content does not jump.",
     dependencies: ["pagespeed"],
     evaluate: (ctx) =>
-      metricRule(ctx.pageSpeed?.cls ?? null, (cls) => ({
+      metricRule(ctx, "Cumulative Layout Shift", ctx.pageSpeed?.cls ?? null, (cls) => ({
         status: lowerIsBetter(cls, 0.1, 0.25),
-        evidence: `Cumulative Layout Shift is ${cls.toFixed(2)}.`,
+        evidence: `Cumulative Layout Shift is ${cls.toFixed(3)}.`,
       })),
   },
   {
@@ -1196,7 +1202,7 @@ export const RULES: Rule[] = [
       "Cut main-thread JavaScript: defer third-party scripts, split bundles, and remove unused code.",
     dependencies: ["pagespeed"],
     evaluate: (ctx) =>
-      metricRule(ctx.pageSpeed?.tbtMs ?? null, (ms) => ({
+      metricRule(ctx, "Total Blocking Time", ctx.pageSpeed?.tbtMs ?? null, (ms) => ({
         status: lowerIsBetter(ms, 200, 600),
         evidence: `Total Blocking Time is ${Math.round(ms)}ms.`,
       })),
@@ -1264,16 +1270,18 @@ function lowerIsBetter(value: number, good: number, ok: number): AuditStatus {
 }
 
 function metricRule(
+  ctx: RuleContext,
+  metric: string,
   value: number | null,
   grade: (value: number) => RuleEvaluation,
 ): RuleEvaluation {
-  return value === null
-    ? {
-        status: "na",
-        evidence:
-          "PageSpeed Insights was unavailable for this audit. Re-run the audit or open the report link in diagnostics.",
-      }
-    : grade(value);
+  if (value !== null) return grade(value);
+  return {
+    status: "na",
+    evidence: ctx.pageSpeed
+      ? `PageSpeed Insights did not report ${metric} for this page.`
+      : "PageSpeed Insights was unavailable for this audit. Re-run the audit or open the report link in diagnostics.",
+  };
 }
 
 function firstUsefulParagraph(paragraphs: string[]): string {

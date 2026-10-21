@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { auditFromSources } from "@/lib/audit";
 import { CATEGORIES, blockedAiCrawlers } from "@/lib/rules";
 
-import { ARTICLE_HTML, makeSources, statusOf } from "./helpers/sources";
+import { ARTICLE_HTML, evidenceOf, makeSources, statusOf } from "./helpers/sources";
 
 const run = (overrides: Parameters<typeof makeSources>[0] = {}) =>
   auditFromSources(makeSources(overrides));
@@ -34,6 +34,14 @@ describe("A13 AI crawler access", () => {
     expect(statusOf(run({ robotsTxt: null }), "A13")).toBe("pass");
   });
 
+  it("tells a missing robots.txt apart from an empty one", () => {
+    expect(evidenceOf(run({ robotsTxt: null }), "A13")).toMatch(/No robots\.txt was found/);
+    expect(evidenceOf(run({ robotsTxt: "" }), "A13")).toBe(
+      "robots.txt is empty, so AI crawlers are not blocked.",
+    );
+    expect(statusOf(run({ robotsTxt: "" }), "A13")).toBe("pass");
+  });
+
   it("is partial when only training bots are blocked", () => {
     const robots = "User-agent: GPTBot\nDisallow: /\n\nUser-agent: Google-Extended\nDisallow: /\n";
     expect(statusOf(run({ robotsTxt: robots }), "A13")).toBe("partial");
@@ -52,6 +60,10 @@ describe("A13 AI crawler access", () => {
 describe("A14 llms.txt", () => {
   it("passes for a markdown llms.txt", () => {
     expect(statusOf(run(), "A14")).toBe("pass");
+  });
+
+  it("says the file has a heading, not that it starts with one", () => {
+    expect(evidenceOf(run(), "A14")).toBe("/llms.txt exists and has a Markdown H1 heading.");
   });
 
   it("is partial for plain text without a heading", () => {
@@ -142,6 +154,31 @@ describe("H performance", () => {
     expect(statusOf(audit, "H2")).toBe("partial");
     expect(statusOf(audit, "H3")).toBe("fail");
     expect(statusOf(audit, "H4")).toBe("fail");
+  });
+
+  it("shows LCP and CLS precisely enough to agree with the thresholds", () => {
+    const audit = run({ pageSpeed: { performanceScore: 95, lcpMs: 2550, cls: 0.104, tbtMs: 100 } });
+    expect(statusOf(audit, "H2")).toBe("partial");
+    expect(evidenceOf(audit, "H2")).toContain("2.55s");
+    expect(statusOf(audit, "H3")).toBe("partial");
+    expect(evidenceOf(audit, "H3")).toContain("0.104");
+  });
+
+  it("names the missing metric when PageSpeed ran but did not report it", () => {
+    const audit = run({ pageSpeed: { performanceScore: 95, lcpMs: null, cls: null, tbtMs: null } });
+    expect(statusOf(audit, "H2")).toBe("na");
+    expect(evidenceOf(audit, "H2")).toBe(
+      "PageSpeed Insights did not report Largest Contentful Paint for this page.",
+    );
+    expect(evidenceOf(audit, "H3")).toContain("Cumulative Layout Shift");
+    expect(evidenceOf(audit, "H4")).toContain("Total Blocking Time");
+  });
+
+  it("says PageSpeed was unavailable only when it produced no result", () => {
+    const audit = run({ pageSpeed: null });
+    for (const id of ["H1", "H2", "H3", "H4"]) {
+      expect(evidenceOf(audit, id)).toMatch(/^PageSpeed Insights was unavailable/);
+    }
   });
 
   it("is N/A without PageSpeed and redistributes its weight", () => {

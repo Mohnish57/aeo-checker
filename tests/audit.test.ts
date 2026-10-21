@@ -23,6 +23,17 @@ describe("auditFromSources", () => {
     }
   });
 
+  it.each([
+    ["with PageSpeed", {}],
+    ["without PageSpeed", { pageSpeed: null }],
+  ])("never scores a category above its maximum or the total above 100 (%s)", (_label, overrides) => {
+    const result = auditFromSources(makeSources(overrides));
+    for (const category of result.categories) {
+      expect([category.id, category.score <= category.maxScore]).toEqual([category.id, true]);
+    }
+    expect(result.score).toBeLessThanOrEqual(100);
+  });
+
   it("reports diagnostics", () => {
     expect(audit.diagnostics).toMatchObject({
       httpStatus: 200,

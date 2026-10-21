@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isRealLlmsTxt,
   isSitemapXml,
   looksLikeHtml,
   parseSitemapDirectives,
@@ -37,5 +38,19 @@ describe("looksLikeHtml", () => {
     expect(looksLikeHtml({ contentType: "text/html", body: "# hi" })).toBe(true);
     expect(looksLikeHtml({ contentType: "", body: "<!DOCTYPE html><html>" })).toBe(true);
     expect(looksLikeHtml({ contentType: "text/plain", body: "# Acme\n" })).toBe(false);
+  });
+});
+
+describe("isRealLlmsTxt", () => {
+  it("accepts a 200 text response", () => {
+    expect(isRealLlmsTxt({ status: 200, contentType: "text/plain", body: "# A" })).toBe(true);
+  });
+
+  it("rejects null, non-200 and HTML catch-alls", () => {
+    expect(isRealLlmsTxt(null)).toBe(false);
+    expect(isRealLlmsTxt({ status: 404, contentType: "text/plain", body: "" })).toBe(false);
+    expect(
+      isRealLlmsTxt({ status: 200, contentType: "text/html", body: "<!doctype html>" }),
+    ).toBe(false);
   });
 });

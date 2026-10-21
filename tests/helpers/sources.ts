@@ -69,3 +69,11 @@ export function statusOf(audit: AuditResult, id: string): AuditStatus {
   if (!item) throw new Error(`No audit item ${id}`);
   return item.status;
 }
+
+export function evidenceOf(audit: AuditResult, id: string): string {
+  const item = audit.categories
+    .flatMap((c) => c.items)
+    .find((i) => i.id === id);
+  if (!item) throw new Error(`No audit item ${id}`);
+  return item.evidence;
+}

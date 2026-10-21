@@ -73,6 +73,11 @@ export function looksLikeHtml(file: {
   );
 }
 
+/** True for a real llms.txt: a 200 response that is not an HTML catch-all page. */
+export function isRealLlmsTxt(file: LlmsTxtInfo): file is NonNullable<LlmsTxtInfo> {
+  return !!file && file.status === 200 && !looksLikeHtml(file);
+}
+
 const DEFAULT_SITEMAP_PATHS = ["/sitemap.xml", "/sitemap_index.xml"];
 
 async function findSitemap(

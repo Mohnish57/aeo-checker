@@ -40,7 +40,7 @@ import {
   type RuleEvaluation,
   type SchemaSummary,
 } from "@/lib/rules";
-import { fetchSiteFiles, looksLikeHtml, type SiteFiles } from "@/lib/site-files";
+import { fetchSiteFiles, isRealLlmsTxt, type SiteFiles } from "@/lib/site-files";
 import { displayHost } from "@/lib/url";
 
 const STATUS_VALUE: Record<AuditStatus, number> = {
@@ -103,9 +103,10 @@ export function assertAuditablePage(page: FetchResult): void {
 
 export function auditFromSources(sources: PageSources): AuditResult {
   const ctx = buildContext(sources);
-  const categories = scoreCategories(ctx);
+  const { categories, rawScore } = scoreCategories(ctx);
 
-  const score = round1(categories.reduce((sum, c) => sum + c.score, 0));
+  // Rounded once, from unrounded category totals, so it never exceeds 100.
+  const score = round1(Math.min(rawScore, 100));
   const topPriorities = categories
     .flatMap((c) => c.items)
     .filter((item) => item.status === "fail" || item.status === "partial")
@@ -137,10 +138,7 @@ export function auditFromSources(sources: PageSources): AuditResult {
       redirects: ctx.redirects,
       markdownExtract: ctx.markdown ? "ready" : "empty",
       robotsTxt: ctx.robotsTxt ? "found" : "missing",
-      llmsTxt:
-        ctx.llmsTxt?.status === 200 && !looksLikeHtml(ctx.llmsTxt)
-          ? "found"
-          : "missing",
+      llmsTxt: isRealLlmsTxt(ctx.llmsTxt) ? "found" : "missing",
       sitemap: ctx.sitemap.found ? "found" : "missing",
       pageSpeed: ctx.pageSpeed ? "ready" : "unavailable",
       pageSpeedReportUrl: pageSpeedReportUrl(sources.page.finalUrl),
@@ -253,7 +251,10 @@ function buildContext(sources: PageSources): RuleContext {
 
 type Evaluated = { rule: Rule; result: RuleEvaluation };
 
-function scoreCategories(ctx: RuleContext): AuditCategory[] {
+function scoreCategories(ctx: RuleContext): {
+  categories: AuditCategory[];
+  rawScore: number;
+} {
   const evaluated = CATEGORIES.map((category) => ({
     category,
     results: RULES.filter((rule) => rule.categoryId === category.id).map(
@@ -270,20 +271,24 @@ function scoreCategories(ctx: RuleContext): AuditCategory[] {
     .reduce((sum, { category }) => sum + category.maxScore, 0);
   const scale = activeTotal > 0 ? 100 / activeTotal : 0;
 
-  return evaluated.map(({ category, results }) =>
+  const scored = evaluated.map(({ category, results }) =>
     scoreCategory(
       category,
       results,
       isActive(results) ? category.maxScore * scale : 0,
     ),
   );
+  return {
+    categories: scored.map((entry) => entry.category),
+    rawScore: scored.reduce((sum, entry) => sum + entry.rawScore, 0),
+  };
 }
 
 function scoreCategory(
   category: CategoryDef,
   evaluated: Evaluated[],
   maxScore: number,
-): AuditCategory {
+): { category: AuditCategory; rawScore: number } {
   // Denominator only includes applicable (non-N/A) rules so N/A items
   // don't inflate scores by getting full credit or shrinking weights.
   const applicable = evaluated.filter(({ result }) => result.status !== "na");
@@ -292,6 +297,9 @@ function scoreCategory(
     0,
   );
 
+  // Item rows are rounded for display only; the category total is computed
+  // from unrounded values and rounded once so it can never exceed maxScore.
+  let rawScore = 0;
   const items: AuditItem[] = evaluated
     .map(({ rule, result }) => {
       if (result.status === "na" || denominator === 0) {
@@ -306,6 +314,7 @@ function scoreCategory(
         };
       }
       const itemMax = (maxScore * (rule.multiplier ?? 1)) / denominator;
+      rawScore += itemMax * STATUS_VALUE[result.status];
       return {
         id: rule.id,
         label: rule.label,
@@ -318,14 +327,18 @@ function scoreCategory(
     })
     .sort((a, b) => b.maxScore - a.maxScore);
 
+  rawScore = Math.min(rawScore, maxScore);
   return {
-    id: category.id,
-    name: category.name,
-    description: category.description,
-    score: round1(items.reduce((sum, item) => sum + item.score, 0)),
-    maxScore: round1(maxScore),
-    naExcluded: evaluated.length - applicable.length,
-    items,
+    rawScore,
+    category: {
+      id: category.id,
+      name: category.name,
+      description: category.description,
+      score: round1(rawScore),
+      maxScore: round1(maxScore),
+      naExcluded: evaluated.length - applicable.length,
+      items,
+    },
   };
 }
 
