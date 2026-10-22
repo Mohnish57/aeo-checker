@@ -182,6 +182,32 @@ describe("assertAuditablePage", () => {
   it("accepts HTML", () => {
     expect(() => assertAuditablePage(page(200))).not.toThrow();
   });
+
+  it("rejects an empty response as blocked (Amazon answers bots with an empty 202)", () => {
+    expect(() => assertAuditablePage(page(202, "text/html", ""))).toThrow(
+      expect.objectContaining({ code: "blocked" }),
+    );
+  });
+
+  it.each([
+    "<html><head><title>Just a moment...</title></head><body><div id=cf-chl-widget></div></body></html>",
+    "<html><head><title>Attention Required! | Cloudflare</title></head><body>Please complete the security check.</body></html>",
+    '<html><body><form action="/errors/validateCaptcha">Type the characters you see in this image.</form></body></html>',
+    // Akamai Bot Manager interstitial, as amazon.com serves it with HTTP 200.
+    `<!DOCTYPE html><html><head><meta http-equiv="refresh" content="5; URL='/?bm-verify=AAQ'" /><title>&nbsp;</title></head><body><script>xhr.open("POST", "/_sec/verify?provider=interstitial", false);</script></body></html>`,
+    // AWS WAF challenge, also served by amazon.com (HTTP 202).
+    '<!DOCTYPE html><html><head><title></title></head><body><script>window.awsWafCookieDomainList = []; window.gokuProps = {"key":"AQ"};</script></body></html>',
+  ])("rejects a bot-challenge page as blocked: %s", (body) => {
+    expect(() => assertAuditablePage(page(200, "text/html", body))).toThrow(
+      expect.objectContaining({ code: "blocked" }),
+    );
+  });
+
+  it("still accepts a client-rendered shell, which A8 scores", () => {
+    const shell =
+      '<html><head><title>App</title></head><body><div id="root"></div><script src="/app.js"></script></body></html>';
+    expect(() => assertAuditablePage(page(200, "text/html", shell))).not.toThrow();
+  });
 });
 
 describe("adversarial HTML", () => {

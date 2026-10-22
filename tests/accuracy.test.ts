@@ -131,6 +131,47 @@ describe("page-type guesses", () => {
   });
 });
 
+describe("opening paragraph (B1)", () => {
+  const intro =
+    "Acme is a widget company that helps product teams ship reusable interface components faster across web and mobile apps.";
+
+  it("skips images before the intro", () => {
+    const html = `<!doctype html><html><head><title>Acme widgets</title></head><body><main><p><img src="/_next/image?url=%2Fimages%2Fuwu.png&w=640&q=75" alt="logo" title="logo by @sawaratsuki1004 drawn for the community homepage"></p><h1>Acme</h1><p>${intro}</p><p>${PARAGRAPH.repeat(4)}</p></main></body></html>`;
+    expect(evidenceOf(run("https://acme.com/", html), "B1")).toContain("Acme is a widget company");
+  });
+
+  it("skips a banner that sits before the H1", () => {
+    const html = `<!doctype html><html><head><title>Acme widgets</title></head><body><div><p>Once a month, what we are seeing inside businesses using widgets and AI. Get the newsletter now →</p></div><main><h1>Acme</h1><p>${intro}</p><p>${PARAGRAPH.repeat(4)}</p></main></body></html>`;
+    expect(evidenceOf(run("https://acme.com/", html), "B1")).toContain("Acme is a widget company");
+  });
+
+  it("collapses text that responsive markup repeats back to back", () => {
+    const line = "The product development system for teams and agents";
+    const html = `<!doctype html><html><head><title>Acme widgets</title></head><body><main><h1>Acme</h1><p><span>${line}</span><span>${line}</span><span>${line}</span> built by Acme for every team.</p><p>${PARAGRAPH.repeat(4)}</p></main></body></html>`;
+    const evidence = evidenceOf(run("https://acme.com/", html), "B1");
+    expect(evidence.split(line).length - 1).toBe(1);
+  });
+});
+
+describe("readability (B13)", () => {
+  it("treats headings and list items as sentence boundaries on marketing pages", () => {
+    const blocks = Array.from(
+      { length: 12 },
+      (_, i) =>
+        `<h2>Senior product engineering teams for fast growing companies number ${i}</h2><ul><li>Design systems that scale with your product</li><li>Mobile apps your customers love to use</li></ul>`,
+    ).join("");
+    const html = `<!doctype html><html><head><title>Acme widgets</title></head><body><main><h1>Acme</h1>${blocks}<p>${PARAGRAPH.repeat(3)}</p></main></body></html>`;
+    expect(statusOf(run("https://acme.com/", html), "B13")).toBe("pass");
+  });
+
+  it("passes plain, clear prose around grade 8", () => {
+    const prose =
+      "A widget is a reusable part of an interface that handles one specific job, such as a button or a search box. Product teams build each widget once and then use it across many pages of their application. This keeps the design consistent and saves a lot of engineering time every quarter. Most teams start with forms, menus, and simple cards before they move on to charts. ";
+    const html = `<!doctype html><html><head><title>Acme widgets</title></head><body><main><h1>Acme</h1><p>${prose.repeat(3)}</p><p>${prose.repeat(2)}</p></main></body></html>`;
+    expect(statusOf(run("https://acme.com/", html), "B13")).toBe("pass");
+  });
+});
+
 describe("date signals", () => {
   it("counts a published date in schema and a visible date outside the main content", () => {
     const html = page({

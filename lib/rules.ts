@@ -94,6 +94,8 @@ export type RuleContext = {
   words: number;
 
   paragraphs: string[];
+  /** First substantive paragraph after the H1 (banners above it skipped). */
+  leadParagraph: string;
   headings: Heading[];
   h1Count: number;
   h2Count: number;
@@ -435,7 +437,7 @@ export const RULES: Rule[] = [
       "Start with a 2-3 sentence answer that names the brand, product, or topic and states what the page is about.",
     dependencies: ["paragraphs", "title", "url"],
     evaluate: (ctx) => {
-      const first = firstUsefulParagraph(ctx.paragraphs);
+      const first = ctx.leadParagraph;
       let status: AuditStatus = "fail";
       if (first) {
         const w = countWords(first);
@@ -660,16 +662,16 @@ export const RULES: Rule[] = [
     categoryId: "B",
     label: "Readability is in a useful AI citation range.",
     recommendation:
-      "Aim for clear expert prose: specific enough to be trusted, but not dense academic copy.",
+      "Aim for clear expert prose around grade 6–14: short sentences and plain words, specific enough to be trusted, not dense academic copy.",
     dependencies: ["readability"],
     evaluate: (ctx) => {
       const g = ctx.grade;
       const status: AuditStatus =
         g === null
           ? "partial"
-          : g >= 10 && g <= 16
+          : g >= 6 && g <= 14
             ? "pass"
-            : g >= 7 && g <= 20
+            : g >= 4 && g <= 18
               ? "partial"
               : "fail";
       return {
@@ -1314,10 +1316,6 @@ function metricRule(
       ? `PageSpeed Insights did not report ${metric} for this page.`
       : "PageSpeed Insights was unavailable for this audit. Re-run the audit or open the report link in diagnostics.",
   };
-}
-
-function firstUsefulParagraph(paragraphs: string[]): string {
-  return paragraphs.find((p) => countWords(p) >= 12) ?? "";
 }
 
 /**

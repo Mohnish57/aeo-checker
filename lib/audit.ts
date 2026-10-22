@@ -99,12 +99,36 @@ export function assertAuditablePage(page: FetchResult): void {
   if (page.status >= 400) {
     throw new FetchError("http-error", `The page returned HTTP ${page.status}.`);
   }
+  if (!page.body.trim()) {
+    throw new FetchError(
+      "blocked",
+      `The site returned an empty page (HTTP ${page.status}) to our checker. That is usually bot protection, which tends to block AI crawlers too, so check your firewall or bot-management rules.`,
+    );
+  }
+  if (isBotChallenge(page.body)) {
+    throw new FetchError(
+      "blocked",
+      "The site showed our checker a bot challenge (CAPTCHA or browser check) instead of the page. AI crawlers usually get the same challenge, so check your firewall or bot-management rules.",
+    );
+  }
   const isHtml =
     /html/i.test(page.contentType) ||
     /^\s*(<!doctype html|<html)/i.test(page.body);
   if (!isHtml) {
     throw new FetchError("not-html", "That URL did not return an HTML page.");
   }
+}
+
+/** Challenge pages are small; real pages with a reCAPTCHA form are not checked. */
+const MAX_CHALLENGE_PAGE_CHARS = 50_000;
+const CHALLENGE_TITLE =
+  /<title[^>]*>\s*(just a moment|attention required|access denied|are you a robot|security check|verify you are human)/i;
+const CHALLENGE_MARKER =
+  /(cf-chl|challenge-platform|\/errors\/validatecaptcha|px-captcha|_incapsula_resource|type the characters you see|bm-verify=|\/_sec\/verify|awswafcookiedomainlist|gokuprops)/i;
+
+function isBotChallenge(body: string): boolean {
+  if (body.length > MAX_CHALLENGE_PAGE_CHARS) return false;
+  return CHALLENGE_TITLE.test(body) || CHALLENGE_MARKER.test(body);
 }
 
 /**
@@ -232,10 +256,11 @@ function buildContext(sources: PageSources): RuleContext {
     headings.filter((h) => h.level === 2).length,
   );
   const paragraphs = extractParagraphs(markdown || htmlText);
+  const leadParagraph = extractLeadParagraph(paragraphs, document, htmlText);
   const words = countWords(analysisText);
   const htmlWords = countWords(htmlText);
   const dataPoints = countDataPoints(analysisText);
-  const grade = fleschKincaidGrade(analysisText);
+  const grade = fleschKincaidGrade(markdown || htmlText);
   const dateSignals = extractDateSignals(document, analysisText, htmlText, jsonLd);
   const canonical = extractCanonical(document);
   const hasNoIndex = detectNoIndex(metas);
@@ -256,6 +281,7 @@ function buildContext(sources: PageSources): RuleContext {
     analysisText,
     words,
     paragraphs,
+    leadParagraph,
     headings,
     h1Count,
     h2Count,
@@ -686,10 +712,50 @@ function extractParagraphs(text: string): string[] {
         paragraph
           .replace(/^#{1,6}\s+/gm, "")
           .replace(/^[-*]\s+/gm, "")
-          .replace(/\[[^\]]+\]\(([^)]+)\)/g, "$1"),
+          // Images are not prose; links keep their text, not their URL.
+          .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1"),
       ),
     )
     .filter((paragraph) => countWords(paragraph) >= 8);
+}
+
+const MIN_LEAD_WORDS = 12;
+/** Each candidate costs a scan of the page text, so only the first few are tried. */
+const MAX_LEAD_CANDIDATES = 20;
+const LEAD_PROBE_CHARS = 40;
+/** Bounds the backreference scan below; leads longer than this are kept as-is. */
+const MAX_REPEAT_SCAN_CHARS = 1_000;
+
+/**
+ * The page's opening paragraph: the first substantive one that sits after
+ * the H1 in the page, so banners and announcement bars above the title are
+ * skipped. Position comes from the DOM because main-content extraction can
+ * drop the H1 or move it. Text that responsive markup renders several times
+ * back to back is collapsed.
+ */
+function extractLeadParagraph(
+  paragraphs: string[],
+  document: Document,
+  pageText: string,
+): string {
+  const compact = (value: string) => value.replace(/\s+/g, "").toLowerCase();
+  const candidates = paragraphs
+    .filter((p) => countWords(p) >= MIN_LEAD_WORDS)
+    .slice(0, MAX_LEAD_CANDIDATES);
+  const h1 = document.querySelector("h1");
+  const page = compact(pageText);
+  const afterH1Text = h1 ? compact(nodeText(document, h1)) : "";
+  const afterH1 = (p: string) => {
+    const probe = compact(stripInlineMarkdown(p)).slice(0, LEAD_PROBE_CHARS);
+    // Not found verbatim (escaping, entities): don't rule it out.
+    return afterH1Text.includes(probe) || !page.includes(probe);
+  };
+  const lead =
+    (h1 ? candidates.find(afterH1) : undefined) ?? candidates[0] ?? "";
+  return lead.length <= MAX_REPEAT_SCAN_CHARS
+    ? lead.replace(/(.{20,}?)\1+/g, "$1")
+    : lead;
 }
 
 function countDataPoints(text: string): number {
@@ -807,14 +873,17 @@ function domHeadings(document: Document): Heading[] {
 /**
  * Visible-ish text of a node: every text node outside script/style/noscript,
  * space-separated. Iterative so deeply nested pages cannot overflow the stack.
+ * With `from`, only text from that node onward (in document order) is kept.
  */
-function nodeText(root: Node): string {
+function nodeText(root: Node, from?: Node): string {
   const parts: string[] = [];
   const stack: Node[] = [root];
+  let collecting = !from;
   while (stack.length) {
     const node = stack.pop()!;
+    if (node === from) collecting = true;
     if (node.nodeType === 3) {
-      parts.push(node.nodeValue ?? "");
+      if (collecting) parts.push(node.nodeValue ?? "");
       continue;
     }
     if (node.nodeType === 1) {
@@ -855,16 +924,28 @@ function decodeHtml(value: string): string {
   });
 }
 
+/**
+ * `text` keeps its line breaks (Markdown). Each line is a block (heading,
+ * list item, paragraph) and ends at least one sentence: marketing headlines
+ * and bullets rarely end in a full stop, and gluing them into one
+ * "sentence" pushed landing pages to grade 25.
+ */
 function fleschKincaidGrade(text: string): number | null {
   // Flesch-Kincaid is English-specific. Bail out for CJK-heavy text.
   if (cjkRatio(text) > 0.35) return null;
 
   const words = text.match(/[A-Za-z][A-Za-z'-]*/g) ?? [];
-  const sentences = text.match(/[.!?]+(?:\s|$)/g) ?? [];
-  if (words.length < 80 || sentences.length < 3) return null;
+  const sentences = text
+    .split("\n")
+    .filter((line) => /[A-Za-z]/.test(line))
+    .reduce(
+      (sum, line) => sum + Math.max(1, line.match(/[.!?]+(?:\s|$)/g)?.length ?? 0),
+      0,
+    );
+  if (words.length < 80 || sentences < 3) return null;
   const syllables = words.reduce((sum, w) => sum + countSyllables(w), 0);
   return (
-    0.39 * (words.length / sentences.length) +
+    0.39 * (words.length / sentences) +
     11.8 * (syllables / words.length) -
     15.59
   );
