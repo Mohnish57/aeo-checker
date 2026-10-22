@@ -236,7 +236,7 @@ function buildContext(sources: PageSources): RuleContext {
   const htmlWords = countWords(htmlText);
   const dataPoints = countDataPoints(analysisText);
   const grade = fleschKincaidGrade(analysisText);
-  const dateSignals = extractDateSignals(document, analysisText, jsonLd);
+  const dateSignals = extractDateSignals(document, analysisText, htmlText, jsonLd);
   const canonical = extractCanonical(document);
   const hasNoIndex = detectNoIndex(metas);
   const faqStatus = computeFaqStatus(analysisText, headings);
@@ -576,38 +576,40 @@ function tryParseJson(raw: string): unknown {
   }
 }
 
-function flattenSchema(value: unknown): JsonObject[] {
-  if (Array.isArray(value)) return value.flatMap(flattenSchema);
-  if (!isObject(value)) return [];
+/** Deep enough for Article > author > worksFor > address; bounds hostile nesting. */
+const MAX_SCHEMA_DEPTH = 12;
 
-  const objects = [value];
-  const graph = value["@graph"];
-  if (Array.isArray(graph)) {
-    objects.push(...graph.filter(isObject));
+/**
+ * Every object in a JSON-LD value, parents before children. Entities are
+ * often nested (Article.author is a Person, Article.publisher an
+ * Organization), so reading only the top level and @graph misses them.
+ */
+function flattenSchema(value: unknown, depth = 0): JsonObject[] {
+  if (depth > MAX_SCHEMA_DEPTH) return [];
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => flattenSchema(item, depth + 1));
   }
-  return objects;
+  if (!isObject(value)) return [];
+  return [
+    value,
+    ...Object.values(value).flatMap((child) => flattenSchema(child, depth + 1)),
+  ];
 }
 
 function summarizeSchema(schemas: JsonObject[]): SchemaSummary {
-  const hasOrganization = schemas.some((s) =>
+  const organizations = schemas.filter((s) =>
     hasSchemaType(s, ["Organization", "LocalBusiness", "Corporation"]),
   );
-  const organization = schemas.find((s) =>
-    hasSchemaType(s, ["Organization", "LocalBusiness", "Corporation"]),
-  );
+  const hasOrganization = organizations.length > 0;
   const sameAsCount = schemas.reduce((sum, s) => {
     const sameAs = s.sameAs;
     if (Array.isArray(sameAs)) return sum + sameAs.length;
     if (typeof sameAs === "string") return sum + 1;
     return sum;
   }, 0);
-  const organizationComplete = !!(
-    organization &&
-    organization.name &&
-    organization.url &&
-    organization.logo &&
-    sameAsCount >= 1
-  );
+  // A page can carry several (publisher, author's employer); judge the best.
+  const organizationComplete =
+    sameAsCount >= 1 && organizations.some((o) => o.name && o.url && o.logo);
 
   const articles = schemas.filter((s) =>
     hasSchemaType(s, ["Article", "BlogPosting", "NewsArticle"]),
@@ -650,17 +652,29 @@ function extractHeadings(document: Document, markdown: string): Heading[] {
   for (const match of markdown.matchAll(/^(#{1,6})\s+(.+)$/gm)) {
     headings.push({
       level: match[1].length,
-      text: normalizeWhitespace(match[2]),
+      text: normalizeWhitespace(stripInlineMarkdown(match[2])),
     });
   }
 
+  // The same heading usually appears in both the DOM and the Markdown, and
+  // extraction can shift its level, so dedupe on text alone (DOM first).
+  // Whitespace is ignored: DOM text joins inline tags with spaces
+  // ("Who is <span>X</span>?" reads "Who is X ?").
   const seen = new Set<string>();
   return headings.filter((h) => {
-    const key = `${h.level}:${h.text.toLowerCase()}`;
+    const key = h.text.toLowerCase().replace(/\s+/g, "");
     if (seen.has(key)) return false;
     seen.add(key);
     return h.text.length > 0;
   });
+}
+
+/** `**bold**`, `_em_`, `` `code` `` and `[text](url)` down to their text. */
+function stripInlineMarkdown(text: string): string {
+  return text
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/(\*\*|__|\*|_|`)(.+?)\1/g, "$2")
+    .replace(/\\([\\`*_{}[\]()#+\-.!])/g, "$1");
 }
 
 function extractParagraphs(text: string): string[] {
@@ -685,41 +699,59 @@ function countDataPoints(text: string): number {
   return matches ? matches.length : 0;
 }
 
+/**
+ * `text` is the main content; `pageText` is the whole page. Publish dates
+ * often sit in a header that main-content extraction drops, so any date on
+ * the page counts, but "updated" must appear in the main content so a footer
+ * line like "Privacy policy updated 2024" does not pass.
+ */
 function extractDateSignals(
   document: Document,
   text: string,
+  pageText: string,
   schemas: JsonObject[],
 ): DateSignals {
   const hasSchemaModified = schemas.some((s) => !!s.dateModified);
+  const hasSchemaPublished = schemas.some((s) => !!s.datePublished);
   const hasTimeTag = document.querySelector("time") !== null;
   const hasVisibleModified =
     /\b(updated|last updated|modified|last modified)\b.{0,40}\b(?:19|20)\d{2}\b/i.test(
       text,
     );
-  const hasAnyDate =
-    hasSchemaModified ||
-    hasTimeTag ||
+  const hasVisibleDate =
     /\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+(?:19|20)\d{2}\b/i.test(
-      text,
-    ) ||
-    /\b(?:19|20)\d{2}-\d{2}-\d{2}\b/.test(text);
+      pageText,
+    ) || /\b(?:19|20)\d{2}-\d{2}-\d{2}\b/.test(pageText);
+  const hasAnyDate =
+    hasSchemaModified || hasSchemaPublished || hasTimeTag || hasVisibleDate;
 
   return {
     hasAnyDate,
     hasModifiedDate: hasSchemaModified || hasVisibleModified,
-    evidence: `dateModified schema: ${hasSchemaModified ? "yes" : "no"}; visible modified date: ${hasVisibleModified ? "yes" : "no"}; time tag: ${hasTimeTag ? "yes" : "no"}.`,
+    evidence: `dateModified schema: ${yesNo(hasSchemaModified)}; datePublished schema: ${yesNo(hasSchemaPublished)}; visible date: ${yesNo(hasVisibleDate)}; visible modified date: ${yesNo(hasVisibleModified)}; time tag: ${yesNo(hasTimeTag)}.`,
   };
 }
 
+function yesNo(value: boolean): string {
+  return value ? "yes" : "no";
+}
+
+const FAQ_PATTERN = /\b(faqs?|frequently asked questions|questions and answers)\b/i;
+
+/**
+ * "pass" means a real FAQ section: an FAQ heading or two question headings.
+ * A passing mention of "FAQ" or a few question marks in prose is "partial",
+ * which B5 rewards a little but which does not make C5 demand FAQPage schema.
+ */
 function computeFaqStatus(text: string, headings: Heading[]): AuditStatus {
   const questionHeadings = headings.filter((h) => h.text.includes("?"));
-  if (
-    /\b(faq|frequently asked questions|questions and answers)\b/i.test(text)
-  ) {
-    return "pass";
-  }
+  if (headings.some((h) => FAQ_PATTERN.test(h.text))) return "pass";
   if (questionHeadings.length >= 2) return "pass";
-  if (questionHeadings.length === 1 || countMatches(text, /\?/g) >= 2) {
+  if (
+    FAQ_PATTERN.test(text) ||
+    questionHeadings.length === 1 ||
+    countMatches(text, /\?/g) >= 2
+  ) {
     return "partial";
   }
   return "fail";

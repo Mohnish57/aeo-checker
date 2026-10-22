@@ -440,7 +440,7 @@ export const RULES: Rule[] = [
       if (first) {
         const w = countWords(first);
         const tokens = [
-          ctx.host.split(".")[0],
+          brandToken(ctx.host),
           ...(ctx.title ?? "")
             .split(/[\s|:.-]+/)
             .filter((t) => t.length > 3 && t.length <= 64)
@@ -793,13 +793,21 @@ export const RULES: Rule[] = [
     recommendation:
       "When FAQ content is visible, mirror the questions and answers in FAQPage JSON-LD.",
     dependencies: ["schema-summary", "text", "headings"],
-    evaluate: (ctx) => ({
-      status:
-        ctx.faqStatus === "fail" ? "na" : ctx.schema.hasFaq ? "pass" : "fail",
-      evidence: ctx.schema.hasFaq
-        ? "FAQPage schema was found."
-        : "FAQ-like content was found without FAQPage schema.",
-    }),
+    evaluate: (ctx) => {
+      if (ctx.schema.hasFaq) {
+        return { status: "pass", evidence: "FAQPage schema was found." };
+      }
+      return ctx.faqStatus === "pass"
+        ? {
+            status: "fail",
+            evidence: "An FAQ section was found without FAQPage schema.",
+          }
+        : {
+            status: "na",
+            evidence:
+              "No FAQ section was found, so FAQPage schema is not required.",
+          };
+    },
   },
   {
     id: "C11",
@@ -892,7 +900,7 @@ export const RULES: Rule[] = [
       "Use the same brand name, category, and entity descriptors in title, meta description, headings, schema, and body copy.",
     dependencies: ["title", "description", "text"],
     evaluate: (ctx) => {
-      const brand = ctx.host.split(".")[0];
+      const brand = brandToken(ctx.host);
       const titleHasBrand =
         !!ctx.title && new RegExp(escapeRegExp(brand), "i").test(ctx.title);
       const descHasBrand =
@@ -921,12 +929,12 @@ export const RULES: Rule[] = [
     categoryId: "E",
     label: "Review or marketplace citation surfaces are linked.",
     recommendation:
-      "Link to maintained profiles on review or marketplace sites (G2, Capterra, Trustpilot, Gartner, ProductHunt) that match your category.",
+      "Link to maintained profiles on review or marketplace sites that match your category: G2, Capterra, TrustRadius or Product Hunt for software; Clutch or GoodFirms for agencies; Trustpilot for consumer brands.",
     dependencies: ["links", "text", "json-ld"],
     multiplier: 0.5,
     evaluate: (ctx) => {
       const pattern =
-        /(g2\.com|capterra\.com|trustpilot\.com|gartner\.com|producthunt\.com)/i;
+        /(g2\.com|capterra\.com|trustpilot\.com|gartner\.com|producthunt\.com|trustradius\.com|clutch\.co|goodfirms\.co)/i;
       const count = ctx.externalLinks.filter((l) => pattern.test(l)).length;
       if (count > 0) {
         return {
@@ -1327,6 +1335,24 @@ function isArticleLike(ctx: RuleContext): boolean {
   );
 }
 
+const DOCS_PATH = /\/(docs?|api|sdk|reference|developers?)(\/|$)/i;
+
+/** Multi-part public suffixes like co.uk, com.au, co.in. */
+const SECOND_LEVEL_LABELS = new Set(["co", "com", "org", "net", "ac", "gov", "edu"]);
+
+/**
+ * The brand part of a host: the registrable domain without its suffix.
+ * en.wikipedia.org -> wikipedia, blog.hubspot.com -> hubspot, bbc.co.uk -> bbc.
+ */
+export function brandToken(host: string): string {
+  const labels = host.toLowerCase().split(".").filter(Boolean);
+  if (labels.length < 2) return labels[0] ?? host;
+  const [secondLast, last] = labels.slice(-2);
+  const multiPartSuffix =
+    labels.length >= 3 && last.length === 2 && SECOND_LEVEL_LABELS.has(secondLast);
+  return labels[labels.length - (multiPartSuffix ? 3 : 2)];
+}
+
 /**
  * Does the page read as a commercial product/SaaS offering? Used to gate rules
  * that only matter when there's something to sell or get reviewed.
@@ -1345,7 +1371,10 @@ function isCommercialOfferingLike(ctx: RuleContext): boolean {
   ) {
     return true;
   }
-  return /\b(pricing|free trial|start free|sign up|signup|sign-up|get started|request a demo|schedule a demo|book a demo|buy now|add to cart|subscribe|per (?:month|user|seat)|saas|platform|software)\b/i.test(
+  if (DOCS_PATH.test(ctx.url.pathname)) return false;
+  // Only phrases that signal something for sale. Generic words like
+  // "platform", "software" or "sign up" appear on docs and newsletters too.
+  return /\b(pricing|free trial|start free|contact sales|request a demo|schedule a demo|book a demo|buy now|add to cart|per (?:month|user|seat))\b/i.test(
     ctx.analysisText,
   );
 }
@@ -1364,10 +1393,10 @@ function isTechnicalProductLike(ctx: RuleContext): boolean {
   ) {
     return true;
   }
-  if (/\/(docs?|api|sdk|reference|developers?)(\/|$)/i.test(ctx.url.pathname)) {
-    return true;
-  }
-  return /\b(api|sdk|cli|library|framework|open[- ]source|developer (?:portal|docs|guide)|npm install|pip install|brew install|github\.com\/[^\s]+)\b/i.test(
+  if (DOCS_PATH.test(ctx.url.pathname)) return true;
+  // Only phrases a developer product uses about itself. A passing mention
+  // of "API", "library" or "framework" is common in non-technical articles.
+  return /\b(sdks?|api reference|api docs|developer (?:portal|docs|guide)|npm install|pip install|brew install|github\.com\/[^\s]+)\b/i.test(
     ctx.analysisText,
   );
 }
