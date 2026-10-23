@@ -24,7 +24,19 @@ const turndown = new TurndownService({
   codeBlockStyle: "fenced",
 });
 const DROPPED_TAGS = new Set(["SCRIPT", "STYLE", "NOSCRIPT", "IFRAME", "SVG", "FORM"]);
-turndown.remove((node) => DROPPED_TAGS.has(node.nodeName.toUpperCase()));
+/**
+ * Site chrome, not content. Readability usually strips it, but homepages
+ * often fall back to <body>, and nav menus and footer social links would
+ * otherwise count as content lists and citations.
+ */
+const CHROME_TAGS = new Set(["NAV", "FOOTER", "ASIDE"]);
+const CHROME_ROLES = new Set(["navigation", "contentinfo", "complementary"]);
+turndown.remove((node) => {
+  const tag = node.nodeName.toUpperCase();
+  if (DROPPED_TAGS.has(tag) || CHROME_TAGS.has(tag)) return true;
+  const role = (node as Element).getAttribute?.("role")?.toLowerCase();
+  return !!role && CHROME_ROLES.has(role);
+});
 
 /**
  * Readability is slow on huge DOMs (seconds at a few hundred thousand

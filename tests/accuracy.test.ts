@@ -172,6 +172,72 @@ describe("readability (B13)", () => {
   });
 });
 
+describe("content checks ignore site chrome", () => {
+  const chrome = `<nav><ul>${["Services", "Work", "About", "Blog", "Careers", "Contact", "Writing"]
+    .map((label) => `<li><a href="/${label.toLowerCase()}">${label}</a></li>`)
+    .join("")}</ul></nav>`;
+  const footer =
+    '<footer><a href="https://github.com/acme">GitHub</a> <a href="https://www.linkedin.com/company/acme">LinkedIn</a> <a href="https://twitter.com/acme">Twitter</a> <a href="https://www.instagram.com/acme">Instagram</a></footer>';
+  const article = (body: string) =>
+    `<!doctype html><html lang="en"><head><title>What a widget is</title></head><body>${chrome}<main><article><h1>What a widget is</h1><p>${PARAGRAPH.repeat(4)}</p>${body}<p>${PARAGRAPH.repeat(3)}</p></article></main>${footer}</body></html>`;
+
+  it("does not count footer social links as citations (B8)", () => {
+    const audit = run("https://acme.com/blog/widgets/", article(""));
+    expect(statusOf(audit, "B8")).toBe("fail");
+  });
+
+  it("counts links cited in the content (B8)", () => {
+    const body =
+      '<p>Sources: <a href="https://www.gartner.com/widgets">Gartner</a>, <a href="https://www.forrester.com/widgets">Forrester</a> and <a href="https://en.wikipedia.org/wiki/Widget">Wikipedia</a> all track widget adoption.</p>';
+    expect(statusOf(run("https://acme.com/blog/widgets/", article(body)), "B8")).toBe("pass");
+  });
+
+  it("does not count navigation menu items as content lists (B14)", () => {
+    expect(statusOf(run("https://acme.com/blog/widgets/", article("")), "B14")).toBe("fail");
+  });
+
+  it("ignores nav and footer on pages without a <main> element", () => {
+    // Homepages often have no <main>, so extraction falls back to <body>.
+    // Content split across many equal sections, so Readability's pick is too
+    // small and extraction falls back to <body>, as on wednesday.is.
+    const sections = Array.from(
+      { length: 6 },
+      (_, i) => `<section class="block-${i}"><h2>Section ${i}</h2><p>${PARAGRAPH.repeat(2)}</p></section>`,
+    ).join("");
+    const html = `<!doctype html><html lang="en"><head><title>Acme</title></head><body>${chrome}<h1>Acme</h1>${sections}${footer}</body></html>`;
+    const audit = run("https://acme.com/", html);
+    expect(statusOf(audit, "B8")).toBe("fail");
+    expect(statusOf(audit, "B14")).toBe("fail");
+  });
+
+  it("counts lists in the content (B14)", () => {
+    const body = `<ul>${Array.from({ length: 6 }, (_, i) => `<li>Widget option number ${i + 1}</li>`).join("")}</ul>`;
+    expect(statusOf(run("https://acme.com/blog/widgets/", article(body)), "B14")).toBe("pass");
+  });
+});
+
+describe("social preview image (G4)", () => {
+  const tags = (image: string) =>
+    `<meta property="og:title" content="Widgets"><meta property="og:description" content="All about widgets."><meta property="og:image" content="${image}">`;
+
+  it("passes an absolute raster image", () => {
+    const audit = run("https://acme.com/", page({ head: tags("https://acme.com/og.png") }));
+    expect(statusOf(audit, "G4")).toBe("pass");
+  });
+
+  it("flags a relative og:image, which crawlers cannot resolve", () => {
+    const audit = run("https://acme.com/", page({ head: tags("/images/og.png") }));
+    expect(statusOf(audit, "G4")).toBe("partial");
+    expect(evidenceOf(audit, "G4")).toContain("absolute");
+  });
+
+  it("flags an SVG og:image, which most platforms do not render", () => {
+    const audit = run("https://acme.com/", page({ head: tags("https://acme.com/og.svg") }));
+    expect(statusOf(audit, "G4")).toBe("partial");
+    expect(evidenceOf(audit, "G4")).toContain("SVG");
+  });
+});
+
 describe("date signals", () => {
   it("counts a published date in schema and a visible date outside the main content", () => {
     const html = page({

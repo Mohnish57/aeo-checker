@@ -103,6 +103,8 @@ export type RuleContext = {
   links: string[];
   externalLinks: string[];
   sameOriginLinks: string[];
+  /** External links inside the main content (citations), excluding nav and footer. */
+  contentExternalLinks: string[];
 
   jsonLd: JsonObject[];
   /** Total `<script type="application/ld+json">` blocks found, including those that failed to parse. */
@@ -137,7 +139,12 @@ export type RuleContext = {
   /** Classic SEO head/body signals. */
   htmlLang: string | null;
   viewport: string | null;
-  openGraph: { title: boolean; description: boolean; image: boolean };
+  openGraph: {
+    title: boolean;
+    description: boolean;
+    image: boolean;
+    imageUrl: string | null;
+  };
   twitterCard: boolean;
   images: { total: number; withAlt: number };
 };
@@ -585,15 +592,13 @@ export const RULES: Rule[] = [
     recommendation:
       "Link major factual claims to authoritative external sources so AI engines can cross-check them.",
     dependencies: ["links"],
-    evaluate: (ctx) => ({
-      status:
-        ctx.externalLinks.length >= 3
-          ? "pass"
-          : ctx.externalLinks.length >= 1
-            ? "partial"
-            : "fail",
-      evidence: `${ctx.externalLinks.length} external link(s) were detected.`,
-    }),
+    evaluate: (ctx) => {
+      const cited = ctx.contentExternalLinks.length;
+      return {
+        status: cited >= 3 ? "pass" : cited >= 1 ? "partial" : "fail",
+        evidence: `${cited} external link(s) were found in the main content (navigation and footer links are not counted).`,
+      };
+    },
   },
   {
     id: "B10",
@@ -691,9 +696,8 @@ export const RULES: Rule[] = [
       "Use bullets, numbered lists, and tables for steps, comparisons, pros/cons, and factual summaries.",
     dependencies: ["markdown", "html"],
     evaluate: (ctx) => {
-      const lists =
-        countMatches(ctx.markdown, /^[-*]\s+/gm) +
-        countMatches(ctx.html, /<li\b/gi);
+      // Main content only: navigation menus are lists too, but not content.
+      const lists = countMatches(ctx.markdown, /^[ \t]*(?:[-*+]|\d+\.)\s+/gm);
       const tables =
         countMatches(ctx.markdown, /^\|.+\|$/gm) +
         countMatches(ctx.html, /<table\b/gi);
@@ -701,7 +705,7 @@ export const RULES: Rule[] = [
         tables >= 1 || lists >= 6 ? "pass" : lists >= 2 ? "partial" : "fail";
       return {
         status,
-        evidence: `${lists} list item(s) and ${tables} table signal(s) detected.`,
+        evidence: `${lists} list item(s) in the main content and ${tables} table signal(s) detected.`,
       };
     },
   },
@@ -1019,12 +1023,12 @@ export const RULES: Rule[] = [
     dependencies: ["links", "data-points"],
     evaluate: (ctx) => ({
       status:
-        ctx.externalLinks.length >= 5 && ctx.dataPoints >= 3
+        ctx.contentExternalLinks.length >= 5 && ctx.dataPoints >= 3
           ? "pass"
-          : ctx.externalLinks.length >= 2
+          : ctx.contentExternalLinks.length >= 2
             ? "partial"
             : "fail",
-      evidence: `${ctx.externalLinks.length} external link(s) and ${ctx.dataPoints} data point(s) were detected.`,
+      evidence: `${ctx.contentExternalLinks.length} external link(s) in the main content and ${ctx.dataPoints} data point(s) were detected.`,
     }),
   },
 
@@ -1114,16 +1118,21 @@ export const RULES: Rule[] = [
     categoryId: "G",
     label: "Open Graph and Twitter card tags are present.",
     recommendation:
-      "Add og:title, og:description, og:image, and twitter:card so shared links render rich previews.",
+      "Add og:title, og:description, og:image (an absolute https:// URL to a PNG or JPG, 1200x630), and twitter:card so shared links render rich previews.",
     dependencies: ["meta"],
     evaluate: (ctx) => {
       const og = ctx.openGraph;
       const present = [og.title, og.description, og.image].filter(Boolean).length;
+      const imageProblem = ogImageProblem(og.imageUrl);
       const status: AuditStatus =
-        present === 3 ? "pass" : present > 0 || ctx.twitterCard ? "partial" : "fail";
+        present === 3 && !imageProblem
+          ? "pass"
+          : present > 0 || ctx.twitterCard
+            ? "partial"
+            : "fail";
       return {
         status,
-        evidence: `og:title ${yesNo(og.title)}, og:description ${yesNo(og.description)}, og:image ${yesNo(og.image)}, twitter:card ${yesNo(ctx.twitterCard)}.`,
+        evidence: `og:title ${yesNo(og.title)}, og:description ${yesNo(og.description)}, og:image ${yesNo(og.image)}, twitter:card ${yesNo(ctx.twitterCard)}.${imageProblem ? ` ${imageProblem}` : ""}`,
       };
     },
   },
@@ -1297,6 +1306,18 @@ function rangeStatus(
   if (value >= good[0] && value <= good[1]) return "pass";
   if (value >= ok[0] && value <= ok[1]) return "partial";
   return "fail";
+}
+
+/** Why an og:image will not render in link previews, or null if it looks fine. */
+function ogImageProblem(imageUrl: string | null): string | null {
+  if (!imageUrl) return null;
+  if (!/^https?:\/\//i.test(imageUrl.trim())) {
+    return `og:image "${clip(imageUrl, 80)}" is not an absolute URL; social platforms and crawlers need a full https:// URL.`;
+  }
+  if (/\.svg(?:[?#]|$)/i.test(imageUrl.trim())) {
+    return "og:image is an SVG, which most social platforms do not render; use a PNG or JPG (1200x630).";
+  }
+  return null;
 }
 
 function lowerIsBetter(value: number, good: number, ok: number): AuditStatus {

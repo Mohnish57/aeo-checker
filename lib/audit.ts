@@ -240,6 +240,11 @@ function buildContext(sources: PageSources): RuleContext {
   const sameOriginLinks = links.filter(
     (link) => new URL(link).origin === url.origin,
   );
+  // Links inside the main content only: citations, not nav or footer.
+  const contentExternalLinks = extractMarkdownLinks(markdown, pageUrl).filter(
+    (link) => new URL(link).origin !== url.origin,
+  );
+  const ogImage = extractMetaContent(metas, "og:image");
   const {
     schemas: jsonLd,
     blockCount: jsonLdBlockCount,
@@ -288,6 +293,7 @@ function buildContext(sources: PageSources): RuleContext {
     links,
     externalLinks,
     sameOriginLinks,
+    contentExternalLinks,
     jsonLd,
     jsonLdBlockCount,
     jsonLdParseFailures,
@@ -309,7 +315,8 @@ function buildContext(sources: PageSources): RuleContext {
     openGraph: {
       title: !!extractMetaContent(metas, "og:title"),
       description: !!extractMetaContent(metas, "og:description"),
-      image: !!extractMetaContent(metas, "og:image"),
+      image: !!ogImage,
+      imageUrl: ogImage,
     },
     twitterCard: !!extractMetaContent(metas, "twitter:card"),
     images: countImages(document),
@@ -535,6 +542,23 @@ function extractLinks(
       }
     } catch {
       // Ignore malformed and non-web links.
+    }
+  }
+  return [...links];
+}
+
+/** Web links in Markdown (main content), skipping images, resolved and deduped. */
+function extractMarkdownLinks(markdown: string, baseUrl: string): string[] {
+  const links = new Set<string>();
+  for (const match of markdown.matchAll(/(?<!!)\[[^\]]*\]\(([^)\s]+)/g)) {
+    try {
+      const url = new URL(match[1], baseUrl);
+      if (url.protocol === "http:" || url.protocol === "https:") {
+        url.hash = "";
+        links.add(url.toString());
+      }
+    } catch {
+      // Ignore malformed links.
     }
   }
   return [...links];
