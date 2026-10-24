@@ -10,14 +10,14 @@ type HomeProps = {
   searchParams: Promise<{ domain?: string }>;
 };
 
-const pageTitle = "AEO Checker | Score your site for ChatGPT, Perplexity & Google";
+const pageTitle = "AEO Checker | Score your site for ChatGPT, Claude, Gemini & Perplexity";
 
 export const metadata: Metadata = {
   title: {
     absolute: pageTitle,
   },
   description:
-    "Check how ChatGPT, Claude and Perplexity see your website. Free 0–100 score, your score after fixes, and copy-paste fix prompts for Webflow, WordPress, Wix, Framer, Lovable and more.",
+    "Check how ChatGPT, Claude, Gemini and Perplexity see your website. Free 0–100 score, your score after fixes, and copy-paste fix prompts for Webflow, WordPress, Wix, Framer, Lovable and more.",
   alternates: {
     canonical: "/",
   },
@@ -39,7 +39,7 @@ const faqSchema = {
       name: "What is an AEO audit?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "An AEO audit evaluates whether a web page is readable and citation-ready for AI answer engines like ChatGPT, Claude, and Perplexity. It scores crawlability for AI bots, semantic HTML and content chunking, structured data and schema markup, and trust signals such as author and date metadata.",
+        text: "An AEO audit evaluates whether a web page is readable and citation-ready for AI answer engines like ChatGPT, Claude, Gemini, Perplexity, and Google AI Overviews. It scores crawlability for AI bots, semantic HTML and content chunking, structured data and schema markup, and trust signals such as author and date metadata.",
       },
     },
     {
@@ -101,10 +101,19 @@ const howToSchema = {
       "@type": "HowToStep",
       position: 3,
       name: "Copy the fix prompts",
-      text: "Copy the prompts, written for your website builder, into ChatGPT or Claude for step-by-step instructions, into an AI builder like Lovable, or send them to your developer.",
+      text: "Copy the prompts, written for your website builder, into ChatGPT, Claude or Gemini for step-by-step instructions, into an AI builder like Lovable, or send them to your developer.",
     },
   ],
 };
+
+const AI_ASSISTANTS = [
+  "ChatGPT",
+  "Claude",
+  "Gemini",
+  "Perplexity",
+  "Google AI Overviews",
+  "Copilot",
+];
 
 const FEATURES = [
   {
@@ -145,13 +154,23 @@ export default async function Home({ searchParams }: HomeProps) {
             Free · No signup
           </p>
           <h1 className="mt-6 text-4xl font-semibold tracking-[-0.025em] text-balance text-ink sm:text-6xl/[1.05]">
-            Will ChatGPT recommend your business?
+            Will AI recommend your business?
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-lg/7 text-pretty text-muted">
-            See how ChatGPT, Claude and Perplexity read your website. Get a
-            score, the fixes that matter most, and prompts made for the tool
-            your site is built with.
+            See how AI assistants read your website. Get a score, the fixes
+            that matter most, and prompts made for the tool your site is
+            built with.
           </p>
+          <ul className="mx-auto mt-5 flex max-w-xl flex-wrap justify-center gap-2">
+            {AI_ASSISTANTS.map((name) => (
+              <li
+                key={name}
+                className="rounded-full border hairline bg-panel px-3 py-1 text-[13px] font-medium text-muted"
+              >
+                {name}
+              </li>
+            ))}
+          </ul>
           <div className="mx-auto mt-10 max-w-xl">
             <AuditForm initialDomain={initialDomain} />
           </div>

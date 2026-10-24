@@ -36,7 +36,7 @@ export async function generateMetadata({
   const decoded = decodeDomain(domain);
   const canonical = `/audit/${encodeURIComponent(decoded)}`;
   const title = `${decoded} | AEO & SEO Score`;
-  const description = `See how ${decoded} scores for ChatGPT, Claude, Perplexity, and Google. Free AEO and SEO audit covering AI crawler access, llms.txt, schema, content structure, classic SEO, and page speed, with a copy-paste fix prompt.`;
+  const description = `See how ${decoded} scores for ChatGPT, Claude, Gemini, Perplexity, and Google AI Overviews. Free AEO and SEO audit covering AI crawler access, llms.txt, schema, content structure, classic SEO, and page speed, with a copy-paste fix prompt.`;
   return {
     title: { absolute: title },
     description,

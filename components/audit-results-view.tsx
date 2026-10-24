@@ -611,7 +611,7 @@ function CopyButton({
 function howToSteps(style: (typeof PLATFORMS)[PlatformId]["style"], name: string): string[] {
   switch (style) {
     case "no-code":
-      return ["Copy a prompt", "Paste it into ChatGPT or Claude", `Follow the steps in ${name}`];
+      return ["Copy a prompt", "Paste it into ChatGPT, Claude or Gemini", `Follow the steps in ${name}`];
     case "ai-builder":
       return ["Copy a prompt", `Paste it into ${name}`, "Publish, then re-check"];
     case "developer":

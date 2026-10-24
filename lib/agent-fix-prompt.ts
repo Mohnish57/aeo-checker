@@ -1,6 +1,6 @@
 /**
  * Fix prompts, written for how the founder edits their site:
- *   no-code     → pasted into ChatGPT/Claude, which walks them through their builder
+ *   no-code     → pasted into ChatGPT/Claude/Gemini, which walks them through their builder
  *   ai-builder  → pasted into Lovable/Bolt/v0/Replit, which makes the change
  *   developer   → a brief for a developer or coding agent
  * Pure and client-safe so the results page can rebuild prompts when the
@@ -93,7 +93,7 @@ My page: ${audit.url}
 Page title: ${audit.title ?? "(none)"}
 Meta description: ${audit.description ?? "(none)"}
 
-An AI-visibility audit scored this page ${formatScore(audit.score)}/100${scoreTarget(audit)}. ${single ? "This fix helps" : "These fixes help"} ChatGPT, Claude, Perplexity and Google's AI answers find, understand and cite the page.
+An AI-visibility audit scored this page ${formatScore(audit.score)}/100${scoreTarget(audit)}. ${single ? "This fix helps" : "These fixes help"} AI assistants such as ChatGPT, Claude, Gemini, Perplexity and Google AI Overviews find, understand and cite the page.
 
 Where things live in ${platform.name}: ${platform.whereThingsLive}
 
@@ -114,7 +114,7 @@ function aiBuilderPrompt(
   platform: Platform,
   issues: PromptIssue[],
 ): string {
-  return `Make these changes to my ${platform.name} site so AI answer engines (ChatGPT, Claude, Perplexity, Google AI) can read, trust and cite it.
+  return `Make these changes to my ${platform.name} site so AI answer engines (ChatGPT, Claude, Gemini, Perplexity, Google AI Overviews) can read, trust and cite it.
 
 Page: ${audit.url}
 Current AI-visibility score: ${formatScore(audit.score)}/100${scoreTarget(audit)}

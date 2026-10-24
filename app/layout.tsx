@@ -13,7 +13,7 @@ const inter = Inter({
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
-const siteTitle = "AEO Checker | Score your site for ChatGPT, Perplexity & Google";
+const siteTitle = "AEO Checker | Score your site for ChatGPT, Claude, Gemini & Perplexity";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     template: "%s | AEO Checker",
   },
   description:
-    "Free AEO checker for founders. See how ChatGPT, Claude and Perplexity read your website, what your score could be after fixes, and get copy-paste fix prompts for Webflow, WordPress, Wix, Lovable and more.",
+    "Free AEO checker for founders. See how ChatGPT, Claude, Gemini and Perplexity read your website, what your score could be after fixes, and get copy-paste fix prompts for Webflow, WordPress, Wix, Lovable and more.",
   applicationName: "AEO Checker",
   keywords: [
     "AI SEO",
@@ -43,6 +43,7 @@ export const metadata: Metadata = {
     "answer engine optimization",
     "LLM SEO",
     "ChatGPT SEO",
+    "Gemini SEO",
     "Claude SEO",
     "Perplexity SEO",
     "AI crawlability",
@@ -112,7 +113,7 @@ export default function RootLayout({
     "@type": "SoftwareApplication",
     name: "AEO Checker",
     description:
-      "Free AEO and SEO audit tool. Score any page for ChatGPT, Claude, and Perplexity visibility and get fix prompts tailored to your website builder.",
+      "Free AEO and SEO audit tool. Score any page for ChatGPT, Claude, Gemini, and Perplexity visibility and get fix prompts tailored to your website builder.",
     applicationCategory: "BusinessApplication",
     applicationSubCategory: "SEO",
     operatingSystem: "Web",

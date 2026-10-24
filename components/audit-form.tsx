@@ -7,7 +7,7 @@ import { ArrowRight, Loader2 } from "lucide-react";
 
 import { auditHref, normalizeAuditUrl } from "@/lib/url";
 
-const EXAMPLES = ["wednesday.is", "linear.app", "stripe.com"];
+const EXAMPLES = ["linear.app", "stripe.com", "notion.so"];
 
 type AuditFormProps = {
   initialDomain?: string;

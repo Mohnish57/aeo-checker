@@ -20,7 +20,7 @@ export type PlatformId =
   | "custom";
 
 /**
- * no-code: the founder edits in a visual builder and asks ChatGPT/Claude how.
+ * no-code: the founder edits in a visual builder and asks an AI assistant how.
  * ai-builder: the prompt is pasted into the builder, which makes the change.
  * developer: the prompt is a brief for a developer or coding agent.
  */

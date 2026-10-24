@@ -51,7 +51,7 @@ export const FIX_GUIDE: Record<string, FixGuide> = {
   },
   A13: {
     title: "AI assistants are allowed to visit your site",
-    problem: "Your site blocks AI assistants like ChatGPT or Perplexity",
+    problem: "Your site blocks AI assistants like ChatGPT, Claude or Perplexity",
     why: "If their crawlers are blocked in robots.txt, these assistants can't read or cite you.",
     effort: "quick",
     siteFix: true,
