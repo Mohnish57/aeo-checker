@@ -23,11 +23,37 @@ export function buildFixPrompts(
   platformId: PlatformId,
 ): AgentFixPrompts {
   const platform = PLATFORMS[platformId];
+  const actionable = actionableIssues(audit);
+  return {
+    full: buildPrompt(audit, platform, actionable),
+    topIssues: actionable.map((issue) => ({
+      id: issue.id,
+      label: guideFor(issue.id).problem,
+      prompt: buildPrompt(audit, platform, [issue]),
+    })),
+  };
+}
+
+/** One prompt covering just the given issues, e.g. the top fixes. */
+export function buildPromptForIssues(
+  audit: PromptAudit,
+  platformId: PlatformId,
+  ids: string[],
+): string {
+  const wanted = new Set(ids);
+  return buildPrompt(
+    audit,
+    PLATFORMS[platformId],
+    actionableIssues(audit).filter((issue) => wanted.has(issue.id)),
+  );
+}
+
+/** Site fixes in priority order, then work that needs more than a site edit. */
+function actionableIssues(audit: PromptAudit): PromptIssue[] {
   const ranked = new Map(
     rankFixes(audit.categories).map((item, index) => [item.id, index]),
   );
-  // Site fixes in priority order, then work that needs more than a site edit.
-  const actionable: PromptIssue[] = audit.categories
+  return audit.categories
     .flatMap((category) =>
       category.items.map((item) => ({ ...item, categoryName: category.name })),
     )
@@ -38,15 +64,6 @@ export function buildFixPrompts(
         b.maxScore - a.maxScore ||
         a.id.localeCompare(b.id),
     );
-
-  return {
-    full: buildPrompt(audit, platform, actionable),
-    topIssues: actionable.map((issue) => ({
-      id: issue.id,
-      label: guideFor(issue.id).problem,
-      prompt: buildPrompt(audit, platform, [issue]),
-    })),
-  };
 }
 
 function buildPrompt(

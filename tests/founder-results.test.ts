@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildFixPrompts } from "@/lib/agent-fix-prompt";
+import { buildFixPrompts, buildPromptForIssues } from "@/lib/agent-fix-prompt";
 import { auditFromSources } from "@/lib/audit";
 import type { AuditCategory, AuditItem, AuditStatus } from "@/lib/audit-types";
 import { FIX_GUIDE, guideFor } from "@/lib/fix-guide";
@@ -159,6 +159,17 @@ describe("buildFixPrompts", () => {
     expect(audit.pageExcerpt).toContain("Acme builds widgets");
   });
 
+  it("keeps link text but drops image and link URLs from the excerpt", () => {
+    const linked = auditFromSources(
+      makeSources({
+        html: `<!doctype html><html lang="en"><head><title>Acme</title></head><body><main><h1>Acme</h1><p><img src="/a-(2).webp" alt="">Acme builds widgets. <a href="/contact">Talk to us</a> about pricing for small teams today.</p></main></body></html>`,
+      }),
+    );
+    expect(linked.pageExcerpt).toContain("Talk to us");
+    expect(linked.pageExcerpt).not.toContain("/contact");
+    expect(linked.pageExcerpt).not.toContain(".webp");
+  });
+
   it("writes no-code prompts for the founder's builder", () => {
     const { full, topIssues } = buildFixPrompts(audit, "webflow");
     expect(full).toContain("I run my website on Webflow");
@@ -185,6 +196,14 @@ describe("buildFixPrompts", () => {
       .flatMap((c) => c.items)
       .filter((i) => i.status === "fail" || i.status === "partial");
     expect(buildFixPrompts(audit, "webflow").topIssues).toHaveLength(actionable.length);
+  });
+
+  it("builds one prompt for just the chosen issues", () => {
+    const [first, second, third] = buildFixPrompts(audit, "webflow").topIssues;
+    const prompt = buildPromptForIssues(audit, "webflow", [first.id, second.id]);
+    expect(prompt).toContain(first.label);
+    expect(prompt).toContain(second.label);
+    expect(prompt).not.toContain(third.label);
   });
 
   it("matches the API's agentPrompts for the detected platform", () => {

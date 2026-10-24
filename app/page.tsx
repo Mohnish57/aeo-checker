@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 
+import { Gauge, MessagesSquare, TrendingUp } from "lucide-react";
+
 import { AuditForm } from "@/components/audit-form";
+import { SiteHeader } from "@/components/site-header";
 import { jsonLdScript } from "@/lib/json-ld";
 
 type HomeProps = {
@@ -14,7 +17,7 @@ export const metadata: Metadata = {
     absolute: pageTitle,
   },
   description:
-    "Paste a URL and get a free 0–100 AEO and SEO score. Checks AI crawler access, llms.txt, schema, content structure, classic SEO, and page speed, then gives you prioritized fixes.",
+    "Check how ChatGPT, Claude and Perplexity see your website. Free 0–100 score, your score after fixes, and copy-paste fix prompts for Webflow, WordPress, Wix, Framer, Lovable and more.",
   alternates: {
     canonical: "/",
   },
@@ -23,7 +26,7 @@ export const metadata: Metadata = {
     url: "/",
     title: pageTitle,
     description:
-      "Free 0–100 AI visibility score with a copy-paste fix prompt your coding agent can run.",
+      "Free AI visibility score, your score after fixes, and fix prompts made for your website builder.",
   },
 };
 
@@ -60,7 +63,7 @@ const faqSchema = {
       name: "Is the AEO Checker free?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Yes. The tool is free, requires no signup, and is open source on GitHub. Paste a URL, get a 0–100 score in about 30 seconds, and copy a fix prompt into Claude Code, Cursor, or any coding agent.",
+        text: "Yes. The tool is free, requires no signup, and is open source on GitHub. Paste a URL, get a 0–100 score in about 30 seconds, and copy fix prompts written for your website builder, such as Webflow, WordPress, Wix or Lovable.",
       },
     },
     {
@@ -79,7 +82,7 @@ const howToSchema = {
   "@type": "HowTo",
   name: "How to audit a page for AI SEO visibility",
   description:
-    "Run a free AEO and SEO audit and apply the fixes with your coding agent in three steps.",
+    "Run a free AEO and SEO audit and apply the fixes in your website builder in three steps.",
   totalTime: "PT2M",
   step: [
     {
@@ -97,67 +100,99 @@ const howToSchema = {
     {
       "@type": "HowToStep",
       position: 3,
-      name: "Copy the fix prompt",
-      text: "Copy the generated prompt and paste it into your coding agent (Claude Code, Cursor, etc.) to ship the fixes automatically.",
+      name: "Copy the fix prompts",
+      text: "Copy the prompts, written for your website builder, into ChatGPT or Claude for step-by-step instructions, into an AI builder like Lovable, or send them to your developer.",
     },
   ],
 };
+
+const FEATURES = [
+  {
+    icon: Gauge,
+    title: "Your score in 30 seconds",
+    text: "We read your page the way AI assistants do and run 45 checks.",
+  },
+  {
+    icon: TrendingUp,
+    title: "See your score after fixes",
+    text: "Know what fixing each issue is worth before you spend time on it.",
+  },
+  {
+    icon: MessagesSquare,
+    title: "Fixes for your website builder",
+    text: "Copy-paste prompts for Webflow, WordPress, Wix, Framer, Lovable and more.",
+  },
+];
 
 export default async function Home({ searchParams }: HomeProps) {
   const params = await searchParams;
   const initialDomain = params.domain ?? "";
 
   return (
-    <main className="relative min-h-[calc(100dvh-4rem)] overflow-hidden bg-canvas">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: jsonLdScript(faqSchema) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: jsonLdScript(howToSchema) }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-20 -bottom-32 select-none text-[28rem] font-medium leading-none tracking-tighter text-ink/[0.04] sm:text-[36rem]"
-      >
-        100
-      </div>
-      <section className="relative mx-auto grid w-full max-w-7xl gap-12 px-5 py-10 sm:px-8 sm:py-14 lg:grid-cols-[7fr_5fr] lg:items-end lg:gap-16">
-        <div className="flex flex-col justify-end">
-          <div className="font-mono text-xs uppercase tracking-[0.28em] text-teal">
-            ◢ Will ChatGPT cite your site?
-          </div>
-          <h1 className="mt-6 text-6xl font-medium tracking-[-0.04em] text-balance text-ink sm:text-[8rem]/[0.9]">
-            Audit.
-            <br />
-            <span className="text-ink/35">Score.</span>{" "}
-            <span className="text-teal">Fix.</span>
-          </h1>
-          <p className="mt-6 max-w-xl text-lg/7 text-pretty text-muted sm:text-xl/8">
-            See your site through the eyes of ChatGPT, Claude, Perplexity, and
-            Google. Get a 0–100 score and prioritized fixes, plus a prompt your
-            coding agent can run.
+    <>
+      <SiteHeader />
+      <main className="bg-canvas">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: jsonLdScript(faqSchema) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: jsonLdScript(howToSchema) }}
+        />
+        <section className="mx-auto w-full max-w-3xl px-4 pt-16 pb-12 text-center sm:px-6 sm:pt-24">
+          <p className="inline-flex items-center gap-2 rounded-full bg-blue-soft px-3 py-1 text-[13px] font-medium text-blue">
+            Free · No signup
           </p>
-          <ul className="mt-8 grid max-w-2xl gap-3 border-t hairline pt-5 text-base text-ink sm:grid-cols-3 sm:gap-6">
-            {[
-              ["Free", "no signup"],
-              ["~30s", "paste a URL, get a score"],
-              ["45+ checks", "AEO, SEO and speed"],
-            ].map(([headline, sub]) => (
-              <li key={headline} className="flex gap-3 sm:flex-col sm:gap-1">
-                <div className="font-mono text-sm font-medium tracking-wide text-teal sm:text-base">
-                  {headline}
-                </div>
-                <div className="text-sm text-muted sm:text-sm">{sub}</div>
-              </li>
+          <h1 className="mt-6 text-4xl font-semibold tracking-[-0.025em] text-balance text-ink sm:text-6xl/[1.05]">
+            Will ChatGPT recommend your business?
+          </h1>
+          <p className="mx-auto mt-5 max-w-xl text-lg/7 text-pretty text-muted">
+            See how ChatGPT, Claude and Perplexity read your website. Get a
+            score, the fixes that matter most, and prompts made for the tool
+            your site is built with.
+          </p>
+          <div className="mx-auto mt-10 max-w-xl">
+            <AuditForm initialDomain={initialDomain} />
+          </div>
+        </section>
+
+        <section className="mx-auto grid w-full max-w-5xl gap-4 px-4 pb-16 sm:grid-cols-3 sm:px-6">
+          {FEATURES.map(({ icon: Icon, title, text }) => (
+            <div key={title} className="card p-5">
+              <span className="grid size-9 place-items-center rounded-lg bg-blue-soft text-blue">
+                <Icon className="size-[18px]" aria-hidden />
+              </span>
+              <h2 className="mt-4 text-[15px] font-semibold text-ink">{title}</h2>
+              <p className="mt-1 text-sm/6 text-muted">{text}</p>
+            </div>
+          ))}
+        </section>
+
+        <section className="mx-auto w-full max-w-3xl px-4 pb-24 sm:px-6">
+          <h2 className="text-2xl font-semibold tracking-tight text-ink">
+            Questions
+          </h2>
+          <div className="card mt-5 divide-y divide-line">
+            {faqSchema.mainEntity.map((entry) => (
+              <details key={entry.name} className="group px-5 py-4">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[15px] font-medium text-ink">
+                  {entry.name}
+                  <span
+                    aria-hidden
+                    className="text-subtle transition group-open:rotate-45"
+                  >
+                    +
+                  </span>
+                </summary>
+                <p className="mt-3 text-sm/6 text-muted">
+                  {entry.acceptedAnswer.text}
+                </p>
+              </details>
             ))}
-          </ul>
-        </div>
-        <div className="flex flex-col justify-end">
-          <AuditForm initialDomain={initialDomain} />
-        </div>
-      </section>
-    </main>
+          </div>
+        </section>
+      </main>
+    </>
   );
 }

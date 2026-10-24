@@ -19,8 +19,8 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+    { media: "(prefers-color-scheme: light)", color: "#f7f8f9" },
+    { media: "(prefers-color-scheme: dark)", color: "#f7f8f9" },
   ],
   colorScheme: "light",
 };
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     template: "%s | AEO Checker",
   },
   description:
-    "Free AEO and SEO checker. Paste a URL to get a 0–100 score for AI answer engines and search, with prioritized fixes and a copy-paste prompt for your coding agent.",
+    "Free AEO checker for founders. See how ChatGPT, Claude and Perplexity read your website, what your score could be after fixes, and get copy-paste fix prompts for Webflow, WordPress, Wix, Lovable and more.",
   applicationName: "AEO Checker",
   keywords: [
     "AI SEO",
@@ -56,7 +56,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: siteTitle,
     description:
-      "Free 0–100 AI visibility score with a copy-paste fix prompt your coding agent can run.",
+      "Free AI visibility score, your score after fixes, and fix prompts made for your website builder.",
     url: siteUrl,
     siteName: "AEO Checker",
     type: "website",
@@ -112,7 +112,7 @@ export default function RootLayout({
     "@type": "SoftwareApplication",
     name: "AEO Checker",
     description:
-      "Free AEO and SEO audit tool. Score any page for ChatGPT, Claude, and Perplexity visibility and get an agent-ready fix prompt.",
+      "Free AEO and SEO audit tool. Score any page for ChatGPT, Claude, and Perplexity visibility and get fix prompts tailored to your website builder.",
     applicationCategory: "BusinessApplication",
     applicationSubCategory: "SEO",
     operatingSystem: "Web",

@@ -7,7 +7,7 @@ import { ArrowRight, Loader2 } from "lucide-react";
 
 import { auditHref, normalizeAuditUrl } from "@/lib/url";
 
-const EXAMPLES = ["vercel.com", "mintlify.com", "gumroad.com"];
+const EXAMPLES = ["wednesday.is", "linear.app", "stripe.com"];
 
 type AuditFormProps = {
   initialDomain?: string;
@@ -22,13 +22,13 @@ export function AuditForm({ initialDomain = "" }: AuditFormProps) {
   function goToAudit(target: string) {
     const trimmed = target.trim();
     if (!trimmed) {
-      setError("Enter a URL to audit.");
+      setError("Enter your website address.");
       return;
     }
 
     const auditUrl = normalizeAuditUrl(trimmed);
     if (!auditUrl) {
-      setError("Enter a valid URL.");
+      setError("That doesn't look like a website address. Try example.com.");
       return;
     }
 
@@ -45,61 +45,55 @@ export function AuditForm({ initialDomain = "" }: AuditFormProps) {
   }
 
   return (
-    <div className="w-full">
-      <form onSubmit={onSubmit} className="grid gap-3">
-        <label className="font-mono text-xs uppercase tracking-[0.22em] text-muted">
-          ◢ paste url
-        </label>
-        <div className="grid gap-0 border-b-2 border-ink/15 focus-within:border-teal sm:grid-cols-[1fr_auto] sm:items-stretch">
-          <input
-            aria-label="URL to audit"
-            name="url"
-            type="text"
-            inputMode="url"
-            autoComplete="url"
-            spellCheck={false}
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            placeholder="example.com"
-            className="min-w-0 bg-transparent py-3 pr-2 text-2xl font-medium tracking-tight text-ink placeholder:text-ink/25 focus:outline-none sm:py-4 sm:text-3xl"
-          />
+    <form onSubmit={onSubmit} className="w-full">
+      <div className="flex flex-col gap-2 rounded-2xl border hairline bg-panel p-2 shadow-[0_1px_2px_rgb(9_30_66/0.08)] focus-within:border-blue focus-within:ring-4 focus-within:ring-blue/15 sm:flex-row">
+        <input
+          aria-label="Website address to check"
+          name="url"
+          type="text"
+          inputMode="url"
+          autoComplete="url"
+          spellCheck={false}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          placeholder="yourcompany.com"
+          className="min-w-0 flex-1 rounded-xl bg-transparent px-3 py-3 text-lg text-ink placeholder:text-subtle/70 focus:outline-none"
+        />
+        <button
+          type="submit"
+          disabled={isPending}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue px-5 py-3 text-[15px] font-medium text-white transition hover:bg-blue-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          {isPending ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : null}
+          {isPending ? "Checking…" : "Check my site"}
+          {isPending ? null : <ArrowRight className="size-4" />}
+        </button>
+      </div>
+
+      {error ? (
+        <p role="alert" className="mt-3 text-sm text-red">
+          {error}
+        </p>
+      ) : null}
+
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm text-subtle">
+        <span>Try</span>
+        {EXAMPLES.map((example) => (
           <button
-            type="submit"
-            disabled={isPending}
-            className="group inline-flex items-center justify-center gap-2 self-stretch px-1 pb-3 pt-2 font-mono text-xs uppercase tracking-[0.22em] text-teal transition hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-teal disabled:cursor-not-allowed disabled:opacity-60 sm:px-2 sm:pt-0 sm:pb-2"
+            key={example}
+            type="button"
+            onClick={() => {
+              setValue(example);
+              goToAudit(example);
+            }}
+            className="rounded-full border hairline bg-panel px-3 py-1 text-muted transition hover:border-blue hover:text-blue"
           >
-            {isPending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <ArrowRight className="size-4 transition group-hover:translate-x-0.5" />
-            )}
-            {isPending ? "auditing" : "run audit"}
+            {example}
           </button>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-muted">
-          <span className="uppercase tracking-[0.18em]">try</span>
-          {EXAMPLES.map((example) => (
-            <button
-              key={example}
-              type="button"
-              onClick={() => {
-                setValue(example);
-                goToAudit(example);
-              }}
-              className="underline decoration-ink/20 decoration-1 underline-offset-4 transition hover:text-ink hover:decoration-teal"
-            >
-              {example}
-            </button>
-          ))}
-        </div>
-
-        {error ? (
-          <p className="font-mono text-xs uppercase tracking-[0.18em] text-red">
-            ✕ {error}
-          </p>
-        ) : null}
-      </form>
-    </div>
+        ))}
+      </div>
+    </form>
   );
 }

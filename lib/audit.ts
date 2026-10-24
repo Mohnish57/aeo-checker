@@ -220,10 +220,21 @@ export function auditFromSources(sources: PageSources): AuditResult {
 
 const EXCERPT_CHARS = 1_200;
 
-/** The start of the page's main content, cut at a word boundary. */
+/**
+ * The start of the page's main content as readable text: images dropped,
+ * links reduced to their text, cut at a word boundary.
+ */
 function excerpt(markdown: string): string {
-  if (markdown.length <= EXCERPT_CHARS) return markdown;
-  const cut = markdown.slice(0, EXCERPT_CHARS);
+  const text = markdown
+    .replace(/!\[[^\]]*\]\((?:\\.|[^)\\])*\)/g, "")
+    .replace(/\[([^\]]*)\]\((?:\\.|[^)\\])*\)/g, (_, label: string) =>
+      label.replace(/\s+/g, " ").trim(),
+    )
+    .replace(/[ \t]+$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  if (text.length <= EXCERPT_CHARS) return text;
+  const cut = text.slice(0, EXCERPT_CHARS);
   return `${cut.slice(0, cut.lastIndexOf(" ")).trimEnd()} …`;
 }
 

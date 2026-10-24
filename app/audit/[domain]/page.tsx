@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { AlertTriangle } from "lucide-react";
 
 import { AuditForm } from "@/components/audit-form";
 import { AuditResultsView } from "@/components/audit-results-view";
+import { SiteHeader } from "@/components/site-header";
 import { auditPageSchemas, jsonLdScript } from "@/lib/json-ld";
 import { performAudit } from "@/lib/perform-audit";
 import { resolveAuditTarget } from "@/lib/url";
@@ -73,8 +75,7 @@ export default async function AuditPage({ params, searchParams }: PageProps) {
   if (result.status === "error") {
     return (
       <ErrorScreen
-        eyebrow={`could not audit ${decoded}`}
-        title="Audit failed."
+        title={`We couldn't check ${decoded}`}
         message={result.message}
         retryDomain={decoded}
       />
@@ -102,51 +103,36 @@ export default async function AuditPage({ params, searchParams }: PageProps) {
 }
 
 function ErrorScreen({
-  eyebrow,
   title,
   message,
   retryDomain,
 }: {
-  eyebrow: string;
   title: string;
   message: string;
   retryDomain?: string;
 }) {
   return (
-    <main className="relative min-h-dvh overflow-hidden bg-canvas">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-10 -bottom-32 select-none text-[24rem] font-medium leading-none tracking-tighter text-red/5 sm:text-[32rem]"
-      >
-        ✕
-      </div>
-      <section className="relative mx-auto grid w-full max-w-7xl gap-10 px-5 py-16 sm:px-8 sm:py-24">
-        <div className="font-mono text-xs uppercase tracking-[0.28em] text-red">
-          ◢ {eyebrow}
-        </div>
-        <h1 className="max-w-3xl text-5xl font-medium tracking-[-0.03em] text-balance text-ink sm:text-7xl">
-          {title}
-        </h1>
-        <p className="max-w-prose text-base/7 text-pretty text-muted sm:text-lg/8">
-          {message}
-        </p>
-        <div className="mt-2 flex flex-wrap items-center gap-6 font-mono text-xs uppercase tracking-[0.22em]">
-          <Link
-            href="/"
-            className="border-b-2 border-ink pb-1 text-ink transition hover:border-teal hover:text-teal"
-          >
-            ◂ back home
-          </Link>
-          {retryDomain ? (
-            <span className="text-muted">
-              tried: <span className="text-ink">{retryDomain}</span>
+    <>
+      <SiteHeader />
+      <main className="bg-canvas">
+        <section className="mx-auto w-full max-w-xl px-4 py-16 sm:px-6 sm:py-24">
+          <div className="card p-6 sm:p-8">
+            <span className="grid size-10 place-items-center rounded-full bg-red-soft text-red">
+              <AlertTriangle className="size-5" aria-hidden />
             </span>
-          ) : null}
-        </div>
-        <div className="mt-8 max-w-xl border-t hairline pt-8">
-          <AuditForm initialDomain={retryDomain} />
-        </div>
-      </section>
-    </main>
+            <h1 className="mt-4 text-2xl font-semibold tracking-tight text-ink">
+              {title}
+            </h1>
+            <p className="mt-2 text-[15px]/6 text-pretty text-muted">{message}</p>
+            <div className="mt-6 border-t hairline pt-6">
+              <AuditForm initialDomain={retryDomain} />
+            </div>
+          </div>
+          <Link href="/" className="mt-6 inline-block text-sm text-blue hover:underline">
+            ← Back to home
+          </Link>
+        </section>
+      </main>
+    </>
   );
 }
