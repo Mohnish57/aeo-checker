@@ -1,3 +1,5 @@
+import type { PlatformId } from "@/lib/platform";
+
 export type AuditStatus = "pass" | "partial" | "fail" | "na";
 
 export type AuditItem = {
@@ -38,6 +40,10 @@ export type AgentFixPrompts = {
 export type AuditResult = {
   url: string;
   host: string;
+  /** Site builder detected from the page HTML. */
+  platform: PlatformId;
+  /** Start of the page's main content, so fix prompts can write real copy. */
+  pageExcerpt: string;
   title: string | null;
   description: string | null;
   fetchedAt: string;

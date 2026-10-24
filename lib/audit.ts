@@ -11,7 +11,7 @@
  * it can be tested with fixtures. To change *what* is measured, edit
  * `lib/rules.ts`.
  */
-import { buildAgentFixPrompts } from "@/lib/agent-fix-prompt";
+import { buildFixPrompts } from "@/lib/agent-fix-prompt";
 import type {
   AuditBand,
   AuditCategory,
@@ -47,6 +47,8 @@ import {
   isRobotsServerError,
   type SiteFiles,
 } from "@/lib/site-files";
+import { detectPlatform } from "@/lib/platform";
+import { BLOCKED_SCORE_CAP } from "@/lib/projection";
 import { displayHost } from "@/lib/url";
 
 const STATUS_VALUE: Record<AuditStatus, number> = {
@@ -132,15 +134,14 @@ function isBotChallenge(body: string): boolean {
 }
 
 /**
- * Failing any of these keeps the page out of AI answers no matter how well
- * the rest scores, so the total is capped in the Critical band.
+ * Why each blocking rule (see BLOCKING_RULE_IDS in lib/projection.ts) keeps
+ * the page out of AI answers; the score is capped while any of them fails.
  */
 const BLOCKING_RULES: Record<string, string> = {
   A8: "the main content needs JavaScript to appear, and AI crawlers usually don't run it",
   A12: "a noindex directive keeps it out of the search indexes AI engines draw on",
   A13: "robots.txt blocks one or more AI answer bots (see A13)",
 };
-const BLOCKED_SCORE_CAP = 40;
 
 export function auditFromSources(sources: PageSources): AuditResult {
   const ctx = buildContext(sources);
@@ -167,6 +168,12 @@ export function auditFromSources(sources: PageSources): AuditResult {
   const audit: Omit<AuditResult, "agentPrompts"> = {
     url: sources.requestedUrl,
     host: ctx.host,
+    platform: detectPlatform({
+      html: ctx.html,
+      host: ctx.url.hostname,
+      generator: ctx.generator,
+    }),
+    pageExcerpt: excerpt(ctx.markdown),
     title: ctx.title,
     description: ctx.description,
     fetchedAt: new Date().toISOString(),
@@ -208,7 +215,16 @@ export function auditFromSources(sources: PageSources): AuditResult {
     },
   };
 
-  return { ...audit, agentPrompts: buildAgentFixPrompts(audit) };
+  return { ...audit, agentPrompts: buildFixPrompts(audit, audit.platform) };
+}
+
+const EXCERPT_CHARS = 1_200;
+
+/** The start of the page's main content, cut at a word boundary. */
+function excerpt(markdown: string): string {
+  if (markdown.length <= EXCERPT_CHARS) return markdown;
+  const cut = markdown.slice(0, EXCERPT_CHARS);
+  return `${cut.slice(0, cut.lastIndexOf(" ")).trimEnd()} …`;
 }
 
 // ---------------------------------------------------------------------------
@@ -279,6 +295,7 @@ function buildContext(sources: PageSources): RuleContext {
     description,
     canonical,
     hasNoIndex,
+    generator: extractMetaContent(metas, "generator"),
     html,
     htmlText,
     htmlWords,

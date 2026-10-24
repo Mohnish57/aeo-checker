@@ -85,6 +85,8 @@ export type RuleContext = {
   description: string | null;
   canonical: string | null;
   hasNoIndex: boolean;
+  /** Content of <meta name="generator">, used to detect the site builder. */
+  generator: string | null;
 
   html: string;
   htmlText: string;
