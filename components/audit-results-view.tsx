@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Copy,
   ExternalLink,
+  Gauge,
   MinusCircle,
   RotateCw,
   XCircle,
@@ -267,6 +268,8 @@ export function AuditResultsView({ audit }: AuditResultsViewProps) {
               />
             </section>
           ) : null}
+
+          <SpeedCard audit={audit} />
 
           <IssueSection
             title="Fix these first"
@@ -543,6 +546,102 @@ function GainLabel({ issue }: { issue: AuditItem }) {
     <span className="shrink-0 text-sm font-semibold tabular-nums text-green">
       +{formatPoints(gain)}
     </span>
+  );
+}
+
+const SPEED_TONE: Record<AuditItem["status"], string> = {
+  pass: "bg-green-soft text-green",
+  partial: "bg-amber-soft text-amber",
+  fail: "bg-red-soft text-red",
+  na: "bg-soft text-subtle",
+};
+
+const SPEED_VERDICT: Record<AuditItem["status"], string> = {
+  pass: "Good",
+  partial: "Needs work",
+  fail: "Slow",
+  na: "Not measured",
+};
+
+function SpeedCard({ audit }: { audit: AuditResult }) {
+  const speed = audit.pageSpeed;
+  const reportUrl = audit.diagnostics.pageSpeedReportUrl;
+  const statusOf = (id: string): AuditItem["status"] =>
+    audit.categories.flatMap((c) => c.items).find((i) => i.id === id)?.status ?? "na";
+
+  const metrics: Array<{ id: string; label: string; hint: string; value: string | null }> = [
+    {
+      id: "H1",
+      label: "Speed score",
+      hint: "Google's overall mobile score",
+      value: speed ? `${speed.performanceScore}/100` : null,
+    },
+    {
+      id: "H2",
+      label: "Main content shows in",
+      hint: "Good is under 2.5s",
+      value: speed?.lcpMs != null ? `${(speed.lcpMs / 1000).toFixed(1)}s` : null,
+    },
+    {
+      id: "H4",
+      label: "Page freezes for",
+      hint: "Good is under 200ms",
+      value: speed?.tbtMs != null ? `${Math.round(speed.tbtMs)}ms` : null,
+    },
+    {
+      id: "H3",
+      label: "Layout jumps",
+      hint: "Good is under 0.1",
+      value: speed?.cls != null ? speed.cls.toFixed(2) : null,
+    },
+  ];
+
+  return (
+    <section className="card mt-10 p-5 sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-ink">
+            <Gauge className="size-5 text-blue" aria-hidden />
+            Page speed on mobile
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            {speed
+              ? "Slow pages get crawled less and rank lower. Measured live by Google."
+              : "Google's speed test didn't respond this time. Re-check, or open the full report."}
+          </p>
+        </div>
+        <a
+          href={reportUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1 whitespace-nowrap text-sm font-medium text-blue hover:underline"
+        >
+          Full Google report
+          <ExternalLink className="size-3.5" />
+        </a>
+      </div>
+      {speed ? (
+        <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {metrics.map((metric) => {
+            const status = metric.value ? statusOf(metric.id) : "na";
+            return (
+              <div key={metric.id} className="rounded-xl border hairline p-4">
+                <div className="text-sm text-muted">{metric.label}</div>
+                <div className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-ink">
+                  {metric.value ?? "—"}
+                </div>
+                <span
+                  className={`mt-2 inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${SPEED_TONE[status]}`}
+                >
+                  {SPEED_VERDICT[status]}
+                </span>
+                <div className="mt-2 text-xs text-subtle">{metric.hint}</div>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </section>
   );
 }
 

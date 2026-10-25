@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { assertAuditablePage, auditFromSources } from "@/lib/audit";
 import { FetchError } from "@/lib/net/safe-fetch";
 
-import { ARTICLE_HTML, makeSources, statusOf } from "./helpers/sources";
+import { ARTICLE_HTML, GOOD_PAGESPEED, makeSources, statusOf } from "./helpers/sources";
 
 describe("auditFromSources", () => {
   const audit = auditFromSources(makeSources());
@@ -44,6 +44,11 @@ describe("auditFromSources", () => {
       sitemap: "found",
       pageSpeed: "ready",
     });
+  });
+
+  it("passes the raw PageSpeed metrics through for the speed card", () => {
+    expect(audit.pageSpeed).toEqual(GOOD_PAGESPEED);
+    expect(auditFromSources(makeSources({ pageSpeed: null })).pageSpeed).toBeNull();
   });
 
   it("uses the final URL for crawlability checks", () => {

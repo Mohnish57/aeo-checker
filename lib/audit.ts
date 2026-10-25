@@ -197,6 +197,7 @@ export function auditFromSources(sources: PageSources): AuditResult {
       jsonLdBlocks: ctx.jsonLdBlockCount,
     },
     categories,
+    pageSpeed: ctx.pageSpeed,
     diagnostics: {
       httpStatus: ctx.httpStatus,
       redirects: ctx.redirects,

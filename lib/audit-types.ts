@@ -1,3 +1,4 @@
+import type { PageSpeedResult } from "@/lib/pagespeed";
 import type { PlatformId } from "@/lib/platform";
 
 export type AuditStatus = "pass" | "partial" | "fail" | "na";
@@ -61,6 +62,8 @@ export type AuditResult = {
     jsonLdBlocks: number;
   };
   categories: AuditCategory[];
+  /** Mobile Lighthouse metrics; null when PageSpeed Insights was unavailable. */
+  pageSpeed: PageSpeedResult | null;
   diagnostics: {
     httpStatus: number;
     redirects: number;
